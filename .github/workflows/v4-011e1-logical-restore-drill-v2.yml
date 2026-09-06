@@ -248,28 +248,35 @@ jobs:
           owner_rows=$(psql "$RESTORE_DB_URL" -X -q -A -t -v ON_ERROR_STOP=1 <<SQL
           begin;
           set local role authenticated;
+          select set_config('request.jwt.claim.sub', '${OWNER_USER_ID}', true);
+          select set_config('request.jwt.claim.role', 'authenticated', true);
           select set_config('request.jwt.claims', '{"sub":"${OWNER_USER_ID}","role":"authenticated"}', true);
           select count(*) from public.inventory_intelligence_v4 where organization_id = '${ORG_ID}'::uuid;
           rollback;
           SQL
           )
           owner_rows=$(printf '%s\n' "$owner_rows" | grep -E '^[0-9]+$' | tail -n1)
+          echo "owner_rls_rows_observed=${owner_rows:-EMPTY}"
           test "$owner_rows" = "$EXPECTED_PROJECTION_ROWS"
 
           denied_rows=$(psql "$RESTORE_DB_URL" -X -q -A -t -v ON_ERROR_STOP=1 <<'SQL'
           begin;
           set local role authenticated;
+          select set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-000000000001', true);
+          select set_config('request.jwt.claim.role', 'authenticated', true);
           select set_config('request.jwt.claims', '{"sub":"00000000-0000-4000-8000-000000000001","role":"authenticated"}', true);
           select count(*) from public.inventory_intelligence_v4;
           rollback;
           SQL
           )
           denied_rows=$(printf '%s\n' "$denied_rows" | grep -E '^[0-9]+$' | tail -n1)
+          echo "unauthorized_rls_rows_observed=${denied_rows:-EMPTY}"
           test "$denied_rows" = "0"
 
           multi_axis_rows=$(psql "$RESTORE_DB_URL" -X -q -A -t -v ON_ERROR_STOP=1 \
             -c "select count(*) from public.inventory_intelligence_multi_axis_v4_011 where organization_id = '${ORG_ID}'::uuid;")
           multi_axis_rows=$(printf '%s\n' "$multi_axis_rows" | grep -E '^[0-9]+$' | tail -n1)
+          echo "multi_axis_rows_observed=${multi_axis_rows:-EMPTY}"
           test "$multi_axis_rows" = "$EXPECTED_PROJECTION_ROWS"
           echo "owner_rls_rows=$owner_rows" >> "$GITHUB_ENV"
           echo "denied_rls_rows=$denied_rows" >> "$GITHUB_ENV"
