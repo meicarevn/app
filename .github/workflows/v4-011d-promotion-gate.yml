@@ -1,0 +1,82 @@
+name: V4_011D Controlled Read-Path Promotion Gate
+
+on:
+  push:
+    branches:
+      - v4-011d-controlled-read-promotion
+  pull_request:
+    branches:
+      - v4-011c-db-read-canary
+    paths:
+      - "src/v4-011d-promotion-gate.ts"
+      - "test/v4-011d-promotion-gate.test.ts"
+      - "docs/V4_011D_*.md"
+      - ".github/workflows/v4-011d-promotion-gate.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  review-only-gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Typecheck and unit tests
+        run: |
+          npm run check
+          npm test
+
+      - name: V4_011D fail-closed governance guards
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -q 'FOUNDER_A_APPROVAL_REQUIRED' src/v4-011d-promotion-gate.ts
+          grep -q 'production_mutation_authorized: false' src/v4-011d-promotion-gate.ts
+          grep -q 'BLOCKED — FOUNDER_A_APPROVAL_REQUIRED' docs/V4_011D_CONTROLLED_READ_PATH_PROMOTION.md
+          if grep -R -Eiq 'SUPABASE_SERVICE_ROLE_KEY|sb_secret_|service_role' src/v4-011d-promotion-gate.ts test/v4-011d-promotion-gate.test.ts docs/V4_011D_CONTROLLED_READ_PATH_PROMOTION.md; then
+            echo "Forbidden service credential marker found in V4_011D preparation files"
+            exit 1
+          fi
+
+      - name: Verify preparation PR does not change production read route or database
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin v4-011c-db-read-canary:refs/remotes/origin/v4-011c-db-read-canary
+          if ! git diff --quiet origin/v4-011c-db-read-canary...HEAD -- shadow-pages/functions/v4/shadow/intelligence-v4-011.ts; then
+            echo "Normal V4_011 Shadow read route changed during review-only preparation"
+            exit 1
+          fi
+          if git diff --name-only origin/v4-011c-db-read-canary...HEAD -- 'supabase/migrations/**' | grep -q .; then
+            echo "Database migration introduced during V4_011D review-only preparation"
+            exit 1
+          fi
+
+      - name: Verify workflow contains no deployment step
+        shell: bash
+        run: |
+          set -euo pipefail
+          if grep -Eiq 'wrangler[[:space:]].*deploy|pages[[:space:]]+deploy|supabase[[:space:]].*deploy' .github/workflows/v4-011d-promotion-gate.yml; then
+            echo "Deployment command found in review-only V4_011D workflow"
+            exit 1
+          fi
+
+      - name: Gate summary
+        run: |
+          echo "### V4_011D Controlled Read-Path Promotion Gate" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Preparation/review only" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Founder A approval required before any production routing change" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Normal V4_011 read route unchanged" >> "$GITHUB_STEP_SUMMARY"
+          echo "- No database migration" >> "$GITHUB_STEP_SUMMARY"
+          echo "- No deployment step" >> "$GITHUB_STEP_SUMMARY"
+          echo "- frontend_v4_ready must remain false" >> "$GITHUB_STEP_SUMMARY"
