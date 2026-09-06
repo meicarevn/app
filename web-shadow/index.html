@@ -23,6 +23,7 @@
       <span id="roleBadge" class="role-badge" hidden>ROLE</span>
       <span class="shadow-badge">SHADOW · READ ONLY</span>
       <a id="memberAdminLink" class="secondary-button" href="./member-admin.html" hidden>Thành viên</a>
+      <a class="secondary-button" href="./login.html">Phiên preview</a>
       <button id="connectionButton" class="secondary-button" type="button">Kết nối</button>
     </div>
   </header>
@@ -54,7 +55,7 @@
 
       <section id="connectionNotice" class="notice warning" hidden>
         <strong>Chưa cấu hình kết nối.</strong>
-        <span>Nhập Gateway URL, Organization ID và access token của phiên đăng nhập để xem dữ liệu Shadow.</span>
+        <span>Dùng “Phiên preview” để đăng nhập bằng tài khoản Supabase hiện tại; không nhập service-role key.</span>
       </section>
 
       <section id="scopeNotice" class="notice warning" hidden>
@@ -79,7 +80,7 @@
       <p class="muted">Thông tin chỉ được giữ trong <code>sessionStorage</code> của tab này. Không dùng service-role key.</p>
       <label>
         Gateway URL
-        <input id="gatewayInput" name="gateway" type="url" placeholder="https://…workers.dev" autocomplete="off" required />
+        <input id="gatewayInput" name="gateway" type="url" placeholder="https://…pages.dev" autocomplete="off" required />
       </label>
       <label>
         Organization ID
