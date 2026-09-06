@@ -5,12 +5,22 @@ compatibility_date = "2026-09-05"
 [vars]
 SUPABASE_URL = "https://YOUR_PROJECT.supabase.co"
 R2_BUCKET_NAME = "meicare-evidence"
+# URL of the reviewed Supabase device-auth adapter. Keep unset until the adapter exists.
+IOT_AUTH_URL = "https://YOUR_PROJECT.functions.supabase.co/iot-device-auth-v1"
 
 [[r2_buckets]]
 binding = "EVIDENCE_BUCKET"
 bucket_name = "meicare-evidence"
 
+[[durable_objects.bindings]]
+name = "REQUEST_GUARD"
+class_name = "RequestGuard"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["RequestGuard"]
+
 # Configure as encrypted secrets, never as vars:
 # SUPABASE_SERVICE_ROLE_KEY
 # SUPABASE_ANON_KEY
-# GATEWAY_ADMIN_TOKEN
+# IOT_AUTH_TOKEN
