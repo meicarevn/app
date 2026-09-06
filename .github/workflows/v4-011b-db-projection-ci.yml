@@ -1,0 +1,155 @@
+name: V4_011B DB Projection CI
+
+on:
+  push:
+    branches:
+      - v4-011b-db-additive-projection
+    paths:
+      - "supabase/migrations/20260906070000_v4_011b_additive_multi_axis_projection.sql"
+      - "scripts/v4-011b-db-acceptance.sql"
+      - "test/v4-011b-migration.test.ts"
+      - "docs/V4_011B_DB_ADDITIVE_PROJECTION.md"
+      - ".github/workflows/v4-011b-db-projection-ci.yml"
+  pull_request:
+    paths:
+      - "supabase/migrations/20260906070000_v4_011b_additive_multi_axis_projection.sql"
+      - "scripts/v4-011b-db-acceptance.sql"
+      - "test/v4-011b-migration.test.ts"
+      - "docs/V4_011B_DB_ADDITIVE_PROJECTION.md"
+      - ".github/workflows/v4-011b-db-projection-ci.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Typecheck and tests
+        run: |
+          npm run check
+          npm test
+
+      - name: Compile migration and assert A1/B1 semantics on ephemeral Postgres
+        env:
+          PGPASSWORD: postgres
+        run: |
+          set -euo pipefail
+          psql -h localhost -U postgres -v ON_ERROR_STOP=1 <<'SQL'
+          create role anon;
+          create role authenticated;
+          create role service_role;
+
+          create table public.inventory_intelligence_v4 (
+            organization_id uuid not null,
+            warehouse_id uuid not null,
+            drug_id uuid not null,
+            analytics_run_id uuid,
+            quantity_on_hand numeric,
+            usable_quantity numeric,
+            quantity_reserved numeric,
+            quantity_quarantined numeric,
+            quantity_rejected numeric,
+            expired_quantity numeric,
+            near_expiry_quantity numeric,
+            inventory_value numeric,
+            unpriced_lot_count integer,
+            forecast_daily_demand numeric,
+            demand_pattern text,
+            demand_confidence_level text,
+            data_quality_score numeric,
+            days_of_supply numeric,
+            last_true_issue_at date,
+            inactive_days integer,
+            slow_moving_status text,
+            approved_min_stock numeric,
+            approved_reorder_point numeric,
+            approved_target_stock numeric,
+            approved_max_stock numeric,
+            reference_stock numeric,
+            reference_basis text,
+            suggested_target_stock numeric,
+            recommended_order_quantity numeric,
+            expiry_quantity_at_risk numeric,
+            expiry_value_at_risk numeric,
+            highest_expiry_risk text,
+            stock_status text,
+            risk_score numeric,
+            risk_components jsonb,
+            recommendation_basis text,
+            calculated_at timestamptz
+          );
+
+          insert into public.inventory_intelligence_v4 (
+            organization_id, warehouse_id, drug_id, quantity_on_hand, usable_quantity,
+            near_expiry_quantity, forecast_daily_demand, last_true_issue_at,
+            reference_stock, highest_expiry_risk, stock_status,
+            expiry_quantity_at_risk, expiry_value_at_risk, calculated_at
+          ) values
+          ('00000000-0000-4000-8000-000000000001','10000000-0000-4000-8000-000000000001','20000000-0000-4000-8000-000000000001',0,0,0,null,null,10,null,'INSUFFICIENT_DATA',0,0,now()),
+          ('00000000-0000-4000-8000-000000000001','10000000-0000-4000-8000-000000000002','20000000-0000-4000-8000-000000000001',10,10,0,null,null,10,null,'HEALTHY',0,0,now()),
+          ('00000000-0000-4000-8000-000000000001','10000000-0000-4000-8000-000000000003','20000000-0000-4000-8000-000000000002',0,0,0,null,null,10,null,'INSUFFICIENT_DATA',0,0,now()),
+          ('00000000-0000-4000-8000-000000000001','10000000-0000-4000-8000-000000000004','20000000-0000-4000-8000-000000000003',40,40,40,null,null,10,'CRITICAL','EXPIRY_RISK',0,0,now());
+
+          \i supabase/migrations/20260906070000_v4_011b_additive_multi_axis_projection.sql
+
+          do $$
+          begin
+            if (select count(*) from public.inventory_intelligence_multi_axis_v4_011) <> 4 then
+              raise exception 'unexpected projection row count';
+            end if;
+            if (select count(*) from public.inventory_intelligence_multi_axis_v4_011 where recommendation_state='TRANSFER_REVIEW') <> 1 then
+              raise exception 'A1 transfer semantics failed';
+            end if;
+            if (select count(*) from public.inventory_intelligence_multi_axis_v4_011 where recommendation_state='PROCUREMENT_REVIEW') <> 1 then
+              raise exception 'A1 procurement semantics failed';
+            end if;
+            if (select count(*) from public.inventory_intelligence_multi_axis_v4_011 where expiry_state='CRITICAL' and expiry_evidence_mode='TIME_WINDOW_ONLY' and recommendation_state='FEFO_REVIEW') <> 1 then
+              raise exception 'B1 expiry semantics failed';
+            end if;
+            if exists (
+              select 1 from public.inventory_intelligence_multi_axis_v4_011
+              where recommendation_state <> 'NONE' and not recommendation_requires_human_review
+            ) then
+              raise exception 'human review invariant failed';
+            end if;
+            if exists (
+              select 1 from public.inventory_intelligence_multi_axis_v4_011
+              where expiry_evidence_mode='TIME_WINDOW_ONLY'
+                and (supported_expiry_quantity_at_risk is not null or supported_expiry_value_at_risk is not null)
+            ) then
+              raise exception 'B1 wastage suppression failed';
+            end if;
+          end $$;
+          SQL
+
+      - name: Static release-boundary guard
+        run: |
+          set -euo pipefail
+          file='supabase/migrations/20260906070000_v4_011b_additive_multi_axis_projection.sql'
+          ! grep -Eiq 'security[[:space:]]+definer' "$file"
+          ! grep -Eiq '(^|[[:space:]])(insert|update|delete|truncate)[[:space:]]+(into[[:space:]]+|from[[:space:]]+)?public\.(inventory_events|inventory_intelligence_v4|alerts|organization_runtime_v4)' "$file"
+          grep -q 'security_invoker = true' "$file"
+          grep -q 'revoke all on public.inventory_intelligence_multi_axis_v4_011 from anon' "$file"
