@@ -72,6 +72,7 @@ jobs:
           node --check web-shadow/role-ux.js
           node --check web-shadow/member-admin.js
           node --check web-shadow/member-admin-v4-canary.js
+          node --check web-shadow/member-admin-canary-config.example.js
       - name: Shadow Worker must remain read-only
         run: |
           if grep -Eq 'method:[[:space:]]*"(POST|PUT|PATCH|DELETE)"|SUPABASE_SERVICE_ROLE_KEY' src/shadow.ts src/shadow-worker.ts src/shadow-access.ts src/member-admin-read.ts; then
@@ -119,6 +120,7 @@ jobs:
           fi
       - name: V4_009G canary routing must fail closed
         run: |
+          EDGE=supabase/functions/meicare-member-admin-v4/index.ts
           grep -q 'V4_CANARY' src/member-admin-canary.ts
           grep -q 'MEMBER_ADMIN_V4_CANARY_DISABLED' src/member-admin-canary.ts
           grep -q '/functions/v1/meicare-member-admin-v4' src/member-admin-canary.ts
@@ -127,7 +129,14 @@ jobs:
           grep -q 'FLAG_OFF' web-shadow/member-admin-v4-canary.js
           grep -q 'ENDPOINT_NOT_APPROVED' web-shadow/member-admin-v4-canary.js
           grep -q 'x-meicare-canary' web-shadow/member-admin-v4-canary.js
+          grep -q 'MEMBER_ADMIN_CANARY_REQUIRED' "$EDGE"
+          grep -q 'x-meicare-canary' "$EDGE"
+          grep -q 'V4_009G' "$EDGE"
           if grep -q 'meicare-member-admin"' web-shadow/member-admin-v4-canary.js; then
             echo "Canary UI contains a legacy write endpoint; silent fallback is forbidden"
+            exit 1
+          fi
+          if grep -Eiq 'SUPABASE_SERVICE_ROLE_KEY|service_role|sb_secret_' web-shadow/member-admin-v4-canary.js web-shadow/member-admin-canary-config.example.js; then
+            echo "Browser canary contains a forbidden secret/service-role marker"
             exit 1
           fi
