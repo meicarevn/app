@@ -1,6 +1,6 @@
 # V4_010 — Full Shadow Frontend Preview Acceptance
 
-Status: **ISOLATED PREVIEW DEPLOYED / AUTOMATED READ-ONLY SMOKE PASS / AUTHENTICATED UX ACCEPTANCE PENDING**
+Status: **ISOLATED PREVIEW DEPLOYED / AUTOMATED READ-ONLY SMOKE PASS / AUTHENTICATED IPAD ACCEPTANCE PARTIAL**
 
 Issue: #19
 
@@ -24,19 +24,24 @@ The preview does not use or expose a Supabase service-role key.
 
 ## Deployment and automated evidence
 
-GitHub Actions run **34014115632** completed successfully on commit `d94b59db4c29686f00e8f4118d7be116bf65269a`.
+Latest visual-fix head: `37525b2c3c4ceebde2211f53b081b7d9ffdfd3db`.
 
-Deployment evidence:
+GitHub Actions evidence on this head:
 
-- existing Pages project: `meicare-smart-pharmacy`;
-- branch alias: `v4-010-shadow-preview`;
-- stable preview: `https://v4-010-shadow-preview.meicare-smart-pharmacy.pages.dev`;
-- observed deployment URL: `https://7e919314.meicare-smart-pharmacy.pages.dev`;
-- Worker/Pages Functions bundle compiled and deployed successfully;
+- **V4_010 Full Shadow Pages Preview** run `34014905636` = SUCCESS;
+- **V4 Shadow Read CI** run `34014907341` = SUCCESS;
 - repository TypeScript check = PASS;
 - unit tests = **37 / 37 PASS**;
 - preview JavaScript syntax = PASS;
 - service-role/secret static guard = PASS.
+
+Latest deployment evidence:
+
+- existing Pages project: `meicare-smart-pharmacy`;
+- branch alias: `v4-010-shadow-preview`;
+- stable preview: `https://v4-010-shadow-preview.meicare-smart-pharmacy.pages.dev`;
+- observed deployment URL: `https://3d8ed05d.meicare-smart-pharmacy.pages.dev`;
+- Worker/Pages Functions bundle compiled and deployed successfully.
 
 Live preview smoke passed on the first check for every route:
 
@@ -46,7 +51,32 @@ Live preview smoke passed on the first check for every route:
 - unauthenticated `/v4/shadow/overview` = **401 UNAUTHORIZED**;
 - POST `/v4/shadow/overview` = **405 METHOD_NOT_ALLOWED** before authentication.
 
-The existing **V4 Shadow Read CI** run **34014116775** on the same head also completed successfully.
+## Authenticated iPad evidence and findings
+
+Authenticated screenshots supplied from iPad confirm that:
+
+- Supabase login completes and redirects to the Shadow UI;
+- current session resolves as `OWNER` with `ORGANIZATION` scope;
+- effective permission count is visible;
+- Overview loads V4 operational metrics;
+- V3 ↔ V4 comparison loads and shows `2,244` rows on both sides with quantity mismatch `0`;
+- semantic mismatch count `1,693` and representative `HEALTHY`, `INSUFFICIENT_DATA`, and `EXPIRY_RISK` rows are visible.
+
+The screenshots also revealed three presentation defects, which are now fixed in the preview branch:
+
+1. elements carrying the HTML `hidden` attribute were still visible because `.notice { display:flex }` overrode the browser hidden rule; this caused false “Chưa cấu hình kết nối”, false “Role có phạm vi giới hạn”, and an empty red error bar even while data was successfully loaded;
+2. the login card used system `Canvas` colors while the rest of the app used dark-mode variables, producing white-on-white/low-contrast text on iPad dark mode;
+3. the tablet top bar was too crowded and allowed control labels to wrap.
+
+Current fixes:
+
+- global `[hidden] { display:none!important; }` in the Shadow role UX stylesheet;
+- explicit dark/light login surface and text variables plus `color-scheme` metadata;
+- improved dark-mode warning/error/success contrast;
+- tablet header compaction, non-wrapping controls, hidden redundant Shadow badge/manual connection button at tablet widths;
+- the authenticated role/session chips and horizontal read-navigation remain preserved.
+
+A fresh iPad refresh/reopen is still required to visually confirm these corrections, so authenticated device acceptance is **partial**, not yet complete.
 
 ## Read-only controls
 
@@ -78,8 +108,10 @@ RLS remains authoritative after these UI/API gates.
 
 ### Tablet / iPad
 
-- at widths up to the tablet breakpoint, navigation changes to the existing fixed horizontal layout;
-- no content is obscured by top navigation;
+- navigation changes to the fixed horizontal layout;
+- top-bar controls do not wrap or obscure content;
+- hidden notices remain absent when the authenticated session is configured and organization-scoped;
+- no content is obscured by navigation;
 - touch targets remain suitable for touch interaction;
 - large tables scroll independently rather than shrinking columns below readability.
 
@@ -87,24 +119,12 @@ RLS remains authoritative after these UI/API gates.
 
 - navigation remains reachable horizontally;
 - cards collapse to a single-column layout;
-- refresh and connection controls remain usable;
+- preview/session controls remain usable;
 - no horizontal page overflow outside intentional table/navigation scroll regions.
 
-## Authenticated session acceptance still required
+## Production invariant
 
-1. Open the isolated preview.
-2. Open `/login` and sign in with an existing Supabase account.
-3. Verify redirect to the V4 Shadow UI.
-4. Verify organization and role/scope are derived from the authenticated session.
-5. Exercise only GET/read views appropriate to that role.
-6. Check desktop/tablet/mobile layout as applicable.
-7. Clear the preview session or close the tab after testing.
-
-The password is not stored. The access token is stored only in the tab's `sessionStorage` for this isolated acceptance preview. This is not the final production authentication UX.
-
-## Production invariant after deployment
-
-Post-deployment database verification remains:
+The preview must not change:
 
 - `cutover_stage = SHADOW`
 - `inventory_write_mode = LEGACY`
@@ -121,7 +141,7 @@ Post-deployment database verification remains:
 
 The preview is technically deployed and automated read-only smoke is complete, but `frontend_v4_ready` must remain false while any of the following remain unresolved:
 
-- authenticated role/device UX acceptance is incomplete;
+- refreshed authenticated iPad/device visual acceptance is incomplete;
 - Founder B semantic review for the 284 zero-stock/insufficient-evidence cases;
 - Founder B review of the 19 expiry-priority cases;
 - demand/forecast coverage remains absent;
