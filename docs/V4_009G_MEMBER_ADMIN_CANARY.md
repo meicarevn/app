@@ -1,6 +1,6 @@
 # V4_009G — Frontend Member Admin Canary & Controlled Routing
 
-Status: **EDGE CANARY ACTIVE / FRONTEND CANARY ROUTE NOT YET DEPLOYED**
+Status: **EDGE CANARY ACTIVE / CLOUDFLARE FRONTEND CANARY DEPLOYED / AUTHENTICATED FOUNDER A ACCEPTANCE PENDING**
 
 Issues: #14, #16, #17
 
@@ -10,7 +10,7 @@ Route the new member-administration UI to `meicare-member-admin-v4` only during 
 
 ## Founder A approval
 
-Founder A explicitly approved production execution of **V4_009G Controlled Canary Activation** on 2026-09-06. The approval is recorded in PR #15 before production Edge Function deployment.
+Founder A explicitly approved production execution of **V4_009G Controlled Canary Activation** on 2026-09-06. The approval is recorded in PR #15 before production Edge Function deployment and controlled frontend canary routing.
 
 ## Production invariants
 
@@ -51,10 +51,33 @@ Passed checks:
 4. canary POST without JWT rejected = PASS;
 5. invalid JWT rejected without mutation = PASS.
 
-Latest branch CI at commit `ed6271286b13cfaac9ad6ac98022e3a1e26a1565` also passed:
+## Cloudflare Pages controlled frontend canary
+
+GitHub Actions rerun of workflow `V4_009G Cloudflare Pages Canary` successfully detected the newly configured repository secrets `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` and deployed the controlled preview to the existing Pages project `meicare-smart-pharmacy`.
+
+Deployment evidence:
+
+- branch alias: `v4-009g-canary`;
+- stable preview URL: `https://v4-009g-canary.meicare-smart-pharmacy.pages.dev`;
+- first successful deployment URL observed: `https://d107c853.meicare-smart-pharmacy.pages.dev`;
+- Cloudflare deploy step = PASS;
+- static canary guards = PASS.
+
+A follow-up workflow revision added **live preview smoke**. Run **34012497621** completed successfully after redeploying the branch preview.
+
+Passed live preview checks:
+
+1. preview root returns HTTP 200 and contains the V4_009G canary marker;
+2. `GET /api/member-admin` returns 405;
+3. POST without canary marker returns 403 `CANARY_HEADER_REQUIRED`;
+4. POST with canary marker but no JWT returns 401 `AUTH_REQUIRED`;
+5. POST with an invalid JWT remains 401 and no member mutation is accepted.
+
+Latest branch CI at commit `e8753a3521d33eb8a99d04b321e7d963d6dd84af` also passed:
 
 - V4 Shadow Read CI = PASS;
-- V4 Gateway CI = PASS.
+- V4 Gateway CI = PASS;
+- V4_009G Cloudflare Pages Canary = PASS, including live preview smoke.
 
 ## Canary decision
 
@@ -65,72 +88,49 @@ memberAdminMode != V4_CANARY
         -> READ ONLY
 
 memberAdminMode = V4_CANARY
-        + exact HTTPS endpoint
-        + same approved Supabase origin
-        + /functions/v1/meicare-member-admin-v4
+        + exact approved route
+        + human Supabase JWT
+        + X-Meicare-Canary: V4_009G
         -> governed V4 writes enabled
 ```
 
-An invalid endpoint, query string, alternate host, HTTP URL, or legacy function path disables writes.
+An invalid endpoint, query string, alternate host, HTTP URL, missing marker, invalid session, or legacy function path disables/stops writes. No V4 failure is automatically retried through legacy V2.
 
-## Approved endpoint
+## Controlled frontend route
 
-`https://sgxufmcsnveyyddazwuk.supabase.co/functions/v1/meicare-member-admin-v4`
+The Founder A acceptance page is deployed as an isolated branch preview and is not the normal production UI:
 
-The canary controller does not contain a legacy write endpoint. Legacy rollback is navigation/deployment routing only, never an automatic retry target.
+`https://v4-009g-canary.meicare-smart-pharmacy.pages.dev`
 
-## Request contract
+The page:
 
-Every V4 canary write sends:
-
-- the current user's `Authorization: Bearer <JWT>`;
-- JSON request body;
-- `X-Request-Id`;
-- `X-Meicare-Canary: V4_009G`.
-
-No service credential is sent to the browser or forwarded from the browser.
-
-## Error behavior
-
-- 401: session invalid/expired; require login again.
-- 403: authenticated user lacks organization-level `membership.manage` or the controlled canary gate rejects the request.
-- 409: lifecycle/role conflict; show controlled conflict, do not retry legacy.
-- 5xx: V4 unavailable; stop the operation, do not retry legacy.
-
-## Remaining frontend activation boundary
-
-The production Edge canary is active, but the **production-facing Cloudflare Pages canary route/session has not been enabled** from this execution environment.
-
-The repository default branch currently does not contain the application/shadow frontend tree, and no Cloudflare management connector/plugin is available to perform a targeted Pages preview deployment. Therefore the rollout intentionally stops before guessing or replacing the existing Cloudflare deployment.
-
-Consequences:
-
-- production legacy UI remains unchanged;
-- `memberAdminMode` is not globally enabled;
-- no authenticated Founder A browser session was routed through V4_009G by this run;
-- no live invite/member mutation was created as part of V4_009G activation;
-- the previously completed V4_009F controlled database acceptance remains the lifecycle/RBAC mutation evidence.
+- uses the normal Supabase Auth login;
+- keeps the access token in memory for the current tab only;
+- does not contain a service-role/secret key;
+- sends writes through same-origin `/api/member-admin`;
+- preserves the human JWT and adds the V4_009G canary marker;
+- exposes an OWNER-protection no-op acceptance action that must return 409 rather than changing OWNER status.
 
 ## Remaining authenticated canary acceptance
 
-Once a controlled Cloudflare canary deployment/session is available, complete only the following scoped checks:
+Only the authenticated Founder A browser acceptance remains:
 
-1. inject `memberAdminMode: "V4_CANARY"` only for the Founder A canary deployment/session;
-2. verify normal production member-admin route remains legacy/unmodified;
-3. verify 401 with expired/invalid login;
-4. verify 403 with a controlled account lacking `membership.manage`;
-5. with the approved admin session, validate one controlled lifecycle flow (invite -> self-activate -> suspend -> reactivate -> disable) and role assignment/end;
-6. verify audit trail and scoped visibility;
-7. remove temporary acceptance account/data;
+1. open the controlled preview URL;
+2. sign in with the existing Founder A/OWNER account;
+3. verify the displayed organization, membership, OWNER role and ACTIVE status;
+4. run the OWNER protection test and require expected 409 with no status mutation;
+5. optionally perform a dedicated temporary lifecycle/role acceptance account only if explicitly desired;
+6. verify audit/scoped visibility if any temporary mutation test is performed;
+7. log out so the in-memory tab token is cleared;
 8. verify ledger drift remains 0;
-9. switch canary flag back to `OFF` and verify the V4 write UI becomes read-only.
+9. keep `frontend_v4_ready=false` until separate frontend release acceptance/approval.
 
 ## Rollback
 
-Rollback does not perform a write retry. It consists of disabling/removing the canary frontend route/config and returning users to the existing legacy UI. The legacy Edge Function remains ACTIVE. V4_009F database changes are additive; frontend rollback does not require inventory or ledger mutation.
+Rollback does not perform a write retry. The controlled Pages branch preview can simply stop being used/removed, while normal users remain on the existing production UI. The legacy `meicare-member-admin` v2 remains ACTIVE. V4_009F database changes are additive; frontend rollback does not require inventory or ledger mutation.
 
-If the V4 Edge canary itself must be rolled back before frontend activation, redeploy the previously preserved version-1 source of `meicare-member-admin-v4` or keep callers on legacy `meicare-member-admin` v2. Do not alter inventory truth as part of member-admin rollback.
+If the V4 Edge canary itself must be rolled back, callers can remain on legacy `meicare-member-admin` v2 or the previous V4 source can be redeployed. Do not alter inventory truth as part of member-admin rollback.
 
 ## Release gate
 
-Founder A approval for V4_009G Controlled Canary Activation is recorded. This approval authorized the controlled production Edge revision and canary frontend routing only. It does **not** authorize setting `frontend_v4_ready=true`, switching inventory writes away from LEGACY, or changing the global cutover stage.
+Founder A approval for V4_009G Controlled Canary Activation is recorded. This approval authorized the controlled production Edge revision and isolated frontend canary routing only. It does **not** authorize setting `frontend_v4_ready=true`, switching inventory writes away from LEGACY, or changing the global cutover stage.
