@@ -1,0 +1,60 @@
+name: V4_009G Cloudflare Pages Canary
+
+on:
+  push:
+    branches: ["v4-009g-member-admin-canary"]
+    paths:
+      - "canary-pages/**"
+      - ".github/workflows/v4-009g-cloudflare-pages-canary.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate-and-deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Static canary guards
+        run: |
+          node --check canary-pages/public/app.js
+          node --check canary-pages/functions/api/member-admin.js
+          grep -q 'V4_009G' canary-pages/public/app.js
+          grep -q 'V4_009G' canary-pages/functions/api/member-admin.js
+          if grep -Eiq 'SUPABASE_SERVICE_ROLE_KEY|sb_secret_|service_role' canary-pages/public/app.js canary-pages/public/index.html; then
+            echo "Browser canary contains a forbidden secret/service-role marker"
+            exit 1
+          fi
+      - name: Cloudflare credentials status
+        id: cf
+        env:
+          CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CF_ACCOUNT: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          if [ -n "$CF_TOKEN" ] && [ -n "$CF_ACCOUNT" ]; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+            echo "Cloudflare credentials available; deploying controlled preview."
+          else
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "Cloudflare credentials are not configured in GitHub Actions; preview deployment skipped."
+          fi
+      - name: Deploy branch preview to existing Pages project
+        if: steps.cf.outputs.ready == 'true'
+        working-directory: canary-pages
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: npx --yes wrangler@4 pages deploy public --project-name meicare-smart-pharmacy --branch v4-009g-canary --commit-dirty=true
+      - name: Canary deployment summary
+        run: |
+          echo "### V4_009G Cloudflare Pages canary" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Target project: meicare-smart-pharmacy" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Branch alias: v4-009g-canary" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Expected alias: https://v4-009g-canary.meicare-smart-pharmacy.pages.dev" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Deploy attempted: ${{ steps.cf.outputs.ready }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- frontend_v4_ready must remain false" >> "$GITHUB_STEP_SUMMARY"
