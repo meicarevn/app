@@ -1,0 +1,131 @@
+name: V4_011 Multi-axis Shadow Pages Preview
+
+on:
+  push:
+    branches:
+      - v4-011-multi-axis-intelligence
+    paths:
+      - "web-shadow/**"
+      - "shadow-pages/**"
+      - "src/intelligence-v4-011.ts"
+      - "src/shadow-access.ts"
+      - "test/intelligence-v4-011.test.ts"
+      - "docs/V4_011_*.md"
+      - ".github/workflows/v4-011-shadow-pages-preview.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate-deploy-smoke:
+    runs-on: ubuntu-latest
+    env:
+      PREVIEW_URL: https://v4-011-multi-axis-preview.meicare-smart-pharmacy.pages.dev
+      ORG_ID: 68d83220-4e5d-46e7-8bd3-7863205985f4
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Typecheck and unit tests
+        run: |
+          npm run check
+          npm test
+
+      - name: Preview JavaScript syntax
+        run: |
+          node --check web-shadow/app.js
+          node --check web-shadow/login.js
+          node --check web-shadow/multi-axis-review.js
+
+      - name: V4_011 static safety guards
+        shell: bash
+        run: |
+          set -euo pipefail
+          if grep -R -Eiq 'SUPABASE_SERVICE_ROLE_KEY|sb_secret_|service_role' web-shadow shadow-pages/functions; then
+            echo "Forbidden service credential marker found in V4_011 preview source"
+            exit 1
+          fi
+          grep -q 'V4_011 · MULTI-AXIS SHADOW' web-shadow/multi-axis-review.html
+          grep -q 'intelligence-v4-011' web-shadow/multi-axis-review.js
+          grep -q 'projectMultiAxisRows' shadow-pages/functions/v4/shadow/intelligence-v4-011.ts
+          grep -q 'organization_scope' shadow-pages/functions/v4/shadow/intelligence-v4-011.ts
+          grep -q 'METHOD_NOT_ALLOWED' shadow-pages/functions/v4/shadow/intelligence-v4-011.ts
+          grep -q 'recommendation_requires_human_review' src/intelligence-v4-011.ts
+          if grep -Eq 'method:[[:space:]]*"(POST|PUT|PATCH|DELETE)"' shadow-pages/functions/v4/shadow/intelligence-v4-011.ts; then
+            echo "V4_011 Shadow endpoint contains a mutation fetch"
+            exit 1
+          fi
+
+      - name: Assemble Pages public directory
+        run: |
+          rm -rf shadow-pages/public
+          mkdir -p shadow-pages/public
+          cp -R web-shadow/. shadow-pages/public/
+
+      - name: Cloudflare credentials status
+        id: cf
+        env:
+          CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CF_ACCOUNT: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          if [ -n "$CF_TOKEN" ] && [ -n "$CF_ACCOUNT" ]; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "Cloudflare credentials missing."
+          fi
+
+      - name: Deploy isolated V4_011 Shadow preview
+        if: steps.cf.outputs.ready == 'true'
+        working-directory: shadow-pages
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: npx --yes wrangler@4 pages deploy public --project-name meicare-smart-pharmacy --branch v4-011-multi-axis-preview --commit-dirty=true
+
+      - name: Live preview read-only smoke
+        if: steps.cf.outputs.ready == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          wait_for() {
+            local label="$1" method="$2" url="$3" expected="$4" marker="$5" body="$6"
+            for attempt in $(seq 1 12); do
+              if [ "$method" = "POST" ]; then
+                code=$(curl -sS -X POST -H 'content-type: application/json' -d '{}' -o "$body" -w '%{http_code}' "$url" || true)
+              else
+                code=$(curl -sS -L -o "$body" -w '%{http_code}' "$url" || true)
+              fi
+              echo "$label attempt=$attempt status=$code"
+              if [ "$code" = "$expected" ] && grep -q "$marker" "$body"; then return 0; fi
+              if [ "$attempt" = "12" ]; then
+                echo "$label failed; expected HTTP $expected and marker $marker"
+                cat "$body" || true
+                return 1
+              fi
+              sleep 5
+            done
+          }
+
+          wait_for "multi-axis page" GET "$PREVIEW_URL/multi-axis-review" 200 'V4_011' /tmp/multi.html
+          wait_for "multi-axis unauthenticated" GET "$PREVIEW_URL/v4/shadow/intelligence-v4-011?organization_id=$ORG_ID" 401 'UNAUTHORIZED' /tmp/multi.json
+          wait_for "multi-axis POST fail closed" POST "$PREVIEW_URL/v4/shadow/intelligence-v4-011?organization_id=$ORG_ID" 405 'METHOD_NOT_ALLOWED' /tmp/multi-post.json
+
+      - name: Preview deployment summary
+        if: always()
+        run: |
+          echo "### V4_011 Multi-axis Shadow Preview" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Target Pages project: meicare-smart-pharmacy" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Isolated alias: $PREVIEW_URL" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Additive organization-scope read model only" >> "$GITHUB_STEP_SUMMARY"
+          echo "- A1/B1 projection tests included" >> "$GITHUB_STEP_SUMMARY"
+          echo "- No production stock_status rewrite or alert publication" >> "$GITHUB_STEP_SUMMARY"
+          echo "- frontend_v4_ready must remain false" >> "$GITHUB_STEP_SUMMARY"
