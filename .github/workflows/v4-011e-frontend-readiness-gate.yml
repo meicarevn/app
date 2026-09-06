@@ -80,29 +80,30 @@ jobs:
           grep -q 'global_production_mutation_authorized).toBe(false)' "$TEST"
           grep -q 'GLOBAL PROMOTION BLOCKED' "$DOC"
 
-          # Gate source/test/docs must not contain service-role credentials or secret-key markers.
           service_marker="SUPABASE_""SERVICE_ROLE_KEY"
           secret_marker="sb_""secret_"
           if grep -Eiq "${service_marker}|${secret_marker}" "$SRC" "$TEST" "$DOC"; then
-            echo 'Forbidden service-role secret marker found in V4_011E gate artifacts'
+            echo 'Forbidden privileged-key marker found in V4_011E gate artifacts'
             exit 1
           fi
 
-          # Preparation CI must not consume repository secrets.
           if grep -Eq '^[[:space:]]+[A-Z0-9_]+:[[:space:]]+\$\{\{[[:space:]]*secrets\.' "$WF"; then
             echo 'Repository secret consumption found in preparation workflow'
             exit 1
           fi
 
-          # Detect an actual Wrangler Pages deployment command without self-matching this guard.
-          deploy_tool='wrangler'
-          deploy_cmd='pages deploy'
-          if grep -Fi "$deploy_tool" "$WF" | grep -Fi "$deploy_cmd" >/dev/null; then
-            echo 'Cloudflare Pages deployment command found in preparation workflow'
+          # Assemble the deployment-command signature from fragments so this guard cannot match itself.
+          tool_a='wrang'
+          tool_b='ler'
+          cmd_a='pages '
+          cmd_b='deploy'
+          deployment_pattern="${tool_a}${tool_b}.*${cmd_a}${cmd_b}"
+          if grep -Eiq "$deployment_pattern" "$WF"; then
+            echo 'Production-capable cloud deployment command found in preparation workflow'
             exit 1
           fi
 
-          # The four-file diff whitelist above is the authoritative proof that no runtime,
+          # The four-file diff whitelist is the authoritative proof that no runtime,
           # route, migration, or readiness-mutating production file is changed here.
           grep -q 'frontend_v4_ready=false' "$DOC"
 
