@@ -1,6 +1,7 @@
 import { createClient } from "npm:@supabase/supabase-js@2.112.4";
 
 const DEFAULT_SITE_URL = "https://meicare-smart-pharmacy.pages.dev";
+const CANARY_HEADER_VALUE = "V4_009G";
 const ALLOWED_STATUSES = new Set(["ACTIVE", "SUSPENDED", "DISABLED"]);
 const SCOPE_TYPES = new Set(["ORGANIZATION", "ORG_UNIT", "WAREHOUSE"]);
 
@@ -39,7 +40,7 @@ function response(request: Request, body: unknown, status = 200) {
   };
   if (origin) {
     headers["Access-Control-Allow-Origin"] = origin;
-    headers["Access-Control-Allow-Headers"] = "authorization, x-client-info, apikey, content-type, x-request-id";
+    headers["Access-Control-Allow-Headers"] = "authorization, x-client-info, apikey, content-type, x-request-id, x-meicare-canary";
     headers["Access-Control-Allow-Methods"] = "POST, OPTIONS";
   }
   return new Response(JSON.stringify(body), { status, headers });
@@ -62,6 +63,9 @@ Deno.serve(async (request: Request) => {
   }
   if (request.method !== "POST") return response(request, { error: "METHOD_NOT_ALLOWED", request_id: requestId }, 405);
   if (!allowedOrigin(request)) return response(request, { error: "ORIGIN_NOT_ALLOWED", request_id: requestId }, 403);
+  if (request.headers.get("X-Meicare-Canary") !== CANARY_HEADER_VALUE) {
+    return response(request, { error: "MEMBER_ADMIN_CANARY_REQUIRED", request_id: requestId }, 403);
+  }
 
   const authorization = request.headers.get("Authorization");
   if (!authorization?.startsWith("Bearer ")) {
