@@ -48,6 +48,7 @@ jobs:
         run: |
           set -euo pipefail
           ROUTE=shadow-pages/functions/v4/shadow/intelligence-v4-011.ts
+          DOC=docs/V4_011D_CONTROLLED_READ_PATH_EXECUTION.md
 
           grep -q 'inventory_intelligence_multi_axis_v4_011' "$ROUTE"
           grep -q 'V4_011D_DB_PROJECTION' "$ROUTE"
@@ -74,11 +75,15 @@ jobs:
             exit 1
           fi
 
-          if grep -R -Eiq 'frontend_v4_ready[[:space:]]*=[[:space:]]*true|alert_publish_mode[[:space:]]*=[[:space:]]*[^S]*|inventory_write_mode[[:space:]]*=[[:space:]]*[^L]*' \
-            docs/V4_011D_CONTROLLED_READ_PATH_EXECUTION.md "$ROUTE"; then
-            echo 'Unexpected readiness/runtime promotion marker found'
+          if grep -Eiq 'frontend_v4_ready[[:space:]]*=[[:space:]]*true' "$DOC" "$ROUTE"; then
+            echo 'Unexpected frontend readiness promotion marker found'
             exit 1
           fi
+
+          grep -q 'inventory_write_mode=LEGACY' "$DOC"
+          grep -q 'alert_publish_mode=SHADOW' "$DOC"
+          grep -q 'his_ingestion_mode=HYBRID' "$DOC"
+          grep -q 'frontend_v4_ready=false' "$DOC"
 
       - name: Assemble Pages public directory
         run: |
