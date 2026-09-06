@@ -1,0 +1,306 @@
+name: V4_011E1 Isolated Logical Restore Drill V2
+
+on:
+  push:
+    branches:
+      - v4-011e1-logical-restore-drill
+    paths:
+      - "scripts/v4-011e1-app-restore-manifest.sql"
+      - "scripts/v4-011e1-compare-app-manifests.cjs"
+      - ".github/workflows/v4-011e1-logical-restore-drill-v2.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: v4-011e1-logical-restore-drill-v2
+  cancel-in-progress: false
+
+jobs:
+  logical-restore-drill:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      PROJECT_REF: sgxufmcsnveyyddazwuk
+      PROJECT_REGION: ap-southeast-1
+      OWNER_USER_ID: dd9b8038-6a2f-46cd-a429-14e14eb94484
+      ORG_ID: 68d83220-4e5d-46e7-8bd3-7863205985f4
+      EXPECTED_MIGRATION_COUNT: "59"
+      EXPECTED_LATEST_MIGRATION: "20260906072831"
+      EXPECTED_PROJECTION_ROWS: "2244"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Resolve encrypted database credential
+        shell: bash
+        env:
+          URL_A: ${{ secrets.SUPABASE_DB_URL }}
+          URL_B: ${{ secrets.SUPABASE_DATABASE_URL }}
+          URL_C: ${{ secrets.DATABASE_URL }}
+          PASS_A: ${{ secrets.SUPABASE_DB_PASSWORD }}
+          PASS_B: ${{ secrets.SUPABASE_DATABASE_PASSWORD }}
+        run: |
+          set -euo pipefail
+          SOURCE_DB_URL=""
+          CREDENTIAL_SOURCE=""
+          if [ -n "${URL_A:-}" ]; then
+            SOURCE_DB_URL="$URL_A"; CREDENTIAL_SOURCE="SUPABASE_DB_URL"
+          elif [ -n "${URL_B:-}" ]; then
+            SOURCE_DB_URL="$URL_B"; CREDENTIAL_SOURCE="SUPABASE_DATABASE_URL"
+          elif [ -n "${URL_C:-}" ]; then
+            SOURCE_DB_URL="$URL_C"; CREDENTIAL_SOURCE="DATABASE_URL"
+          else
+            RAW_PASSWORD="${PASS_A:-${PASS_B:-}}"
+            if [ -n "$RAW_PASSWORD" ]; then
+              ENCODED_PASSWORD=$(RAW_PASSWORD="$RAW_PASSWORD" python3 - <<'PY'
+import os, urllib.parse
+print(urllib.parse.quote(os.environ['RAW_PASSWORD'], safe=''))
+PY
+              )
+              SOURCE_DB_URL="postgresql://postgres.${PROJECT_REF}:${ENCODED_PASSWORD}@aws-0-${PROJECT_REGION}.pooler.supabase.com:5432/postgres?sslmode=require"
+              CREDENTIAL_SOURCE="DATABASE_PASSWORD"
+            fi
+          fi
+          test -n "$SOURCE_DB_URL" || { echo MISSING_DB_CREDENTIAL_SECRET; exit 2; }
+          echo "::add-mask::$SOURCE_DB_URL"
+          echo "SOURCE_DB_URL=$SOURCE_DB_URL" >> "$GITHUB_ENV"
+          echo "CREDENTIAL_SOURCE=$CREDENTIAL_SOURCE" >> "$GITHUB_ENV"
+
+      - name: Verify tooling and source baseline
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker version --format '{{.Server.Version}}'
+          psql --version
+          npx --yes supabase@latest --version
+          read -r migration_count latest_migration < <(
+            psql "$SOURCE_DB_URL" -X -q -A -t -v ON_ERROR_STOP=1 \
+              -c "select count(*)::text || ' ' || coalesce(max(version),'') from supabase_migrations.schema_migrations;"
+          )
+          test "$migration_count" = "$EXPECTED_MIGRATION_COUNT"
+          test "$latest_migration" = "$EXPECTED_LATEST_MIGRATION"
+          echo "migration_count=$migration_count" >> "$GITHUB_ENV"
+          echo "latest_migration=$latest_migration" >> "$GITHUB_ENV"
+
+      - name: Capture source manifest before dump
+        shell: bash
+        run: |
+          set -euo pipefail
+          WORK="$RUNNER_TEMP/v4-011e1"
+          mkdir -p "$WORK"
+          psql "$SOURCE_DB_URL" -X -q -A -t -v ON_ERROR_STOP=1 \
+            -f scripts/v4-011e1-app-restore-manifest.sql \
+            | grep -v '^[[:space:]]*$' | tail -n 1 > "$WORK/source-before.json"
+          jq -e . "$WORK/source-before.json" >/dev/null
+          test "$(jq -r '.projection_rows' "$WORK/source-before.json")" = "$EXPECTED_PROJECTION_ROWS"
+          test "$(jq -r '.ledger_drift_rows' "$WORK/source-before.json")" = "0"
+
+      - name: Create Supabase-filtered logical dump
+        id: dump
+        shell: bash
+        run: |
+          set -euo pipefail
+          WORK="$RUNNER_TEMP/v4-011e1"
+          dump_started=$(date +%s)
+          npx --yes supabase@latest db dump --db-url "$SOURCE_DB_URL" -f "$WORK/roles.sql" --role-only
+          npx --yes supabase@latest db dump --db-url "$SOURCE_DB_URL" -f "$WORK/schema.sql"
+          npx --yes supabase@latest db dump --db-url "$SOURCE_DB_URL" -f "$WORK/data.sql" --use-copy --data-only
+          dump_finished=$(date +%s)
+          sha256sum "$WORK/roles.sql" "$WORK/schema.sql" "$WORK/data.sql" > "$WORK/checksums.sha256"
+          echo "dump_seconds=$((dump_finished-dump_started))" >> "$GITHUB_OUTPUT"
+          for name in roles schema data; do
+            echo "${name}_sha=$(awk -v n="$name.sql" '$2 ~ n"$" {print $1}' "$WORK/checksums.sha256")" >> "$GITHUB_OUTPUT"
+            echo "${name}_bytes=$(stat -c%s "$WORK/$name.sql")" >> "$GITHUB_OUTPUT"
+          done
+
+      - name: Capture source manifest after dump
+        shell: bash
+        run: |
+          set -euo pipefail
+          WORK="$RUNNER_TEMP/v4-011e1"
+          psql "$SOURCE_DB_URL" -X -q -A -t -v ON_ERROR_STOP=1 \
+            -f scripts/v4-011e1-app-restore-manifest.sql \
+            | grep -v '^[[:space:]]*$' | tail -n 1 > "$WORK/source-after.json"
+          jq -e . "$WORK/source-after.json" >/dev/null
+
+      - name: Start isolated PostgreSQL 17 restore target
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker pull supabase/postgres:17.6.1.155
+          docker run -d --name meicare-v4-011e1-restore \
+            -e POSTGRES_PASSWORD=postgres \
+            -p 127.0.0.1:54322:5432 \
+            supabase/postgres:17.6.1.155 >/dev/null
+          for attempt in $(seq 1 60); do
+            pg_isready -h 127.0.0.1 -p 54322 -U postgres >/dev/null 2>&1 && exit 0
+            sleep 2
+          done
+          docker logs meicare-v4-011e1-restore --tail 100
+          exit 1
+
+      - name: Bootstrap managed-role compatibility on isolated target
+        shell: bash
+        env:
+          RESTORE_DB_URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres
+        run: |
+          set -euo pipefail
+          WORK="$RUNNER_TEMP/v4-011e1"
+
+          python3 - "$WORK/roles.sql" "$WORK/bootstrap-roles.txt" <<'PY'
+import re, sys
+src, out = sys.argv[1], sys.argv[2]
+creates, refs = set(), set()
+for raw in open(src, encoding='utf-8'):
+    line = raw.strip()
+    m = re.match(r'CREATE ROLE "([A-Za-z_][A-Za-z0-9_]*)"', line)
+    if m:
+        creates.add(m.group(1)); refs.add(m.group(1)); continue
+    m = re.match(r'ALTER ROLE "([A-Za-z_][A-Za-z0-9_]*)"', line)
+    if m:
+        refs.add(m.group(1)); continue
+    m = re.match(r'(?:GRANT|REVOKE) "([A-Za-z_][A-Za-z0-9_]*)" (?:TO|FROM) "([A-Za-z_][A-Za-z0-9_]*)"', line)
+    if m:
+        refs.update(m.groups())
+bootstrap = sorted(refs - creates)
+open(out, 'w', encoding='utf-8').write('\n'.join(bootstrap) + ('\n' if bootstrap else ''))
+PY
+
+          while IFS= read -r role; do
+            [ -n "$role" ] || continue
+            [[ "$role" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || { echo "Invalid role token"; exit 1; }
+            exists=$(psql "$RESTORE_DB_URL" -X -q -A -t -v ON_ERROR_STOP=1 -v role="$role" \
+              -c "select count(*) from pg_roles where rolname = :'role';")
+            if [ "$exists" = "0" ]; then
+              psql "$RESTORE_DB_URL" -X -q -v ON_ERROR_STOP=1 -c "create role \"$role\" nologin;"
+            fi
+          done < "$WORK/bootstrap-roles.txt"
+
+          psql "$RESTORE_DB_URL" -X -q -v ON_ERROR_STOP=1 <<'SQL'
+          DO $$ BEGIN CREATE ROLE anon NOLOGIN; EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+          DO $$ BEGIN CREATE ROLE authenticated NOLOGIN; EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+          DO $$ BEGIN CREATE ROLE service_role NOLOGIN BYPASSRLS; EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+          CREATE SCHEMA IF NOT EXISTS auth;
+          CREATE TABLE IF NOT EXISTS auth.users (
+            id uuid PRIMARY KEY,
+            email text
+          );
+          CREATE OR REPLACE FUNCTION auth.uid() RETURNS uuid
+          LANGUAGE sql STABLE AS $$
+            select nullif(coalesce(current_setting('request.jwt.claim.sub', true), current_setting('request.jwt.claims', true)::jsonb->>'sub'), '')::uuid
+          $$;
+          CREATE OR REPLACE FUNCTION auth.jwt() RETURNS jsonb
+          LANGUAGE sql STABLE AS $$
+            select coalesce(nullif(current_setting('request.jwt.claims', true), ''), '{}')::jsonb
+          $$;
+          CREATE OR REPLACE FUNCTION auth.role() RETURNS text
+          LANGUAGE sql STABLE AS $$
+            select auth.jwt()->>'role'
+          $$;
+          ALTER DEFAULT PRIVILEGES IN SCHEMA public REVOKE ALL ON TABLES FROM anon, authenticated;
+          SQL
+
+      - name: Restore logical dump into isolated target
+        id: restore
+        shell: bash
+        env:
+          RESTORE_DB_URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres
+        run: |
+          set -euo pipefail
+          WORK="$RUNNER_TEMP/v4-011e1"
+          restore_started=$(date +%s)
+          psql "$RESTORE_DB_URL" \
+            --single-transaction \
+            --variable ON_ERROR_STOP=1 \
+            --file "$WORK/roles.sql" \
+            --file "$WORK/schema.sql" \
+            --command 'SET session_replication_role = replica' \
+            --file "$WORK/data.sql"
+          restore_finished=$(date +%s)
+          echo "restore_seconds=$((restore_finished-restore_started))" >> "$GITHUB_OUTPUT"
+
+      - name: Capture restored app manifest and compare
+        shell: bash
+        env:
+          RESTORE_DB_URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres
+        run: |
+          set -euo pipefail
+          WORK="$RUNNER_TEMP/v4-011e1"
+          psql "$RESTORE_DB_URL" -X -q -A -t -v ON_ERROR_STOP=1 \
+            -f scripts/v4-011e1-app-restore-manifest.sql \
+            | grep -v '^[[:space:]]*$' | tail -n 1 > "$WORK/restored.json"
+          jq -e . "$WORK/restored.json" >/dev/null
+          node scripts/v4-011e1-compare-app-manifests.cjs \
+            "$WORK/source-before.json" "$WORK/source-after.json" "$WORK/restored.json" \
+            | tee "$WORK/compare-result.json"
+
+      - name: RLS and application read smoke on restored target
+        shell: bash
+        env:
+          RESTORE_DB_URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres
+        run: |
+          set -euo pipefail
+          owner_rows=$(psql "$RESTORE_DB_URL" -X -q -A -t -v ON_ERROR_STOP=1 <<SQL
+          begin;
+          set local role authenticated;
+          select set_config('request.jwt.claims', '{"sub":"${OWNER_USER_ID}","role":"authenticated"}', true);
+          select count(*) from public.inventory_intelligence_v4 where organization_id = '${ORG_ID}'::uuid;
+          rollback;
+          SQL
+          )
+          owner_rows=$(printf '%s\n' "$owner_rows" | grep -E '^[0-9]+$' | tail -n1)
+          test "$owner_rows" = "$EXPECTED_PROJECTION_ROWS"
+
+          denied_rows=$(psql "$RESTORE_DB_URL" -X -q -A -t -v ON_ERROR_STOP=1 <<'SQL'
+          begin;
+          set local role authenticated;
+          select set_config('request.jwt.claims', '{"sub":"00000000-0000-4000-8000-000000000001","role":"authenticated"}', true);
+          select count(*) from public.inventory_intelligence_v4;
+          rollback;
+          SQL
+          )
+          denied_rows=$(printf '%s\n' "$denied_rows" | grep -E '^[0-9]+$' | tail -n1)
+          test "$denied_rows" = "0"
+
+          multi_axis_rows=$(psql "$RESTORE_DB_URL" -X -q -A -t -v ON_ERROR_STOP=1 \
+            -c "select count(*) from public.inventory_intelligence_multi_axis_v4_011 where organization_id = '${ORG_ID}'::uuid;")
+          test "$multi_axis_rows" = "$EXPECTED_PROJECTION_ROWS"
+          echo "owner_rls_rows=$owner_rows" >> "$GITHUB_ENV"
+          echo "denied_rls_rows=$denied_rows" >> "$GITHUB_ENV"
+          echo "multi_axis_rows=$multi_axis_rows" >> "$GITHUB_ENV"
+
+      - name: Record non-sensitive drill evidence
+        if: success()
+        shell: bash
+        run: |
+          echo "### V4_011E1 Isolated Logical Restore Drill V2 — PASS" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Production mutation: none" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Production downtime: none" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Credential source: $CREDENTIAL_SOURCE (masked)" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Source migration baseline: $migration_count / $latest_migration" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Dump duration: ${{ steps.dump.outputs.dump_seconds }}s" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Restore duration: ${{ steps.restore.outputs.restore_seconds }}s" >> "$GITHUB_STEP_SUMMARY"
+          echo "- roles.sql bytes/SHA256: ${{ steps.dump.outputs.roles_bytes }} / ${{ steps.dump.outputs.roles_sha }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- schema.sql bytes/SHA256: ${{ steps.dump.outputs.schema_bytes }} / ${{ steps.dump.outputs.schema_sha }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- data.sql bytes/SHA256: ${{ steps.dump.outputs.data_bytes }} / ${{ steps.dump.outputs.data_sha }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Restored multi-axis rows: $multi_axis_rows" >> "$GITHUB_STEP_SUMMARY"
+          echo "- OWNER RLS rows: $owner_rls_rows" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Unauthorized authenticated rows: $denied_rls_rows" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Raw dump files were never uploaded or committed and are deleted during cleanup." >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Secure cleanup
+        if: always()
+        shell: bash
+        run: |
+          set +e
+          docker rm -f meicare-v4-011e1-restore >/dev/null 2>&1
+          WORK="$RUNNER_TEMP/v4-011e1"
+          if [ -d "$WORK" ]; then
+            find "$WORK" -maxdepth 1 -type f -exec shred -u {} \; 2>/dev/null || true
+            rm -rf "$WORK"
+          fi
