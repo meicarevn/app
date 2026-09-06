@@ -10,7 +10,7 @@ export class HttpError extends Error {
 
 export const LIMITS = {
   hisJsonBytes: 6 * 1024 * 1024,
-  iotJsonBytes: 16 * 1024,
+  iotJsonBytes: 32 * 1024,
   userJsonBytes: 256 * 1024,
   r2ObjectBytes: 25 * 1024 * 1024,
   hisRows: 20_000,
@@ -118,7 +118,7 @@ export function validateHisPayload(body: JsonObject): {
   const observedAt = requireIsoTimestamp(body.observed_at, "INVALID_OBSERVED_AT");
   const sourceName = optionalString(body, "source_name", 512);
   const coverage = (body.coverage_type ?? "WAREHOUSE_SET_FULL") as unknown;
-  if (!['ORGANIZATION_FULL', 'WAREHOUSE_SET_FULL', 'PARTIAL'].includes(String(coverage))) {
+  if (!["ORGANIZATION_FULL", "WAREHOUSE_SET_FULL", "PARTIAL"].includes(String(coverage))) {
     throw new HttpError(400, "INVALID_COVERAGE_TYPE");
   }
   const fileSha256 = optionalString(body, "file_sha256", 64);
@@ -135,19 +135,25 @@ export function validateHisPayload(body: JsonObject): {
   };
 }
 
-export function validateIotPayload(body: JsonObject) {
-  const deviceUid = requireString(body, "device_uid", 128);
+export function validateIotPayload(body: JsonObject, deviceUidFromHeader?: string | null) {
+  const bodyDeviceUid = optionalString(body, "device_uid", 128);
+  const headerDeviceUid = deviceUidFromHeader?.trim() || null;
+  if (headerDeviceUid && headerDeviceUid.length > 128) throw new HttpError(400, "INVALID_DEVICE_UID");
+  if (bodyDeviceUid && headerDeviceUid && bodyDeviceUid !== headerDeviceUid) throw new HttpError(401, "DEVICE_UID_MISMATCH");
+  const deviceUid = headerDeviceUid || bodyDeviceUid;
+  if (!deviceUid) throw new HttpError(400, "INVALID_DEVICE_UID");
+
   const sequenceNumber = requireInteger(body, "sequence_number", 0);
   const recordedAt = requireIsoTimestamp(body.recorded_at, "INVALID_RECORDED_AT");
-  const temperature = optionalFiniteNumber(body, "temperature", -80, 120);
+  const temperature = optionalFiniteNumber(body, "temperature", -50, 80);
   const humidity = optionalFiniteNumber(body, "humidity", 0, 100);
-  if (temperature == null && humidity == null) throw new HttpError(400, "TEMPERATURE_OR_HUMIDITY_REQUIRED");
+  if (temperature == null || humidity == null) throw new HttpError(400, "TEMPERATURE_AND_HUMIDITY_REQUIRED");
   const batteryVoltage = optionalFiniteNumber(body, "battery_voltage", 0, 30);
   const signalStrength = optionalFiniteNumber(body, "signal_strength", -200, 0);
   const powerStatus = optionalString(body, "power_status", 64);
   const sensorStatus = optionalString(body, "sensor_status", 64);
   const readingKind = String(body.reading_kind ?? "CHANGE").toUpperCase();
-  if (!['CHANGE', 'HEARTBEAT', 'ALERT', 'MANUAL_TEST'].includes(readingKind)) throw new HttpError(400, "INVALID_READING_KIND");
+  if (!["CHANGE", "HEARTBEAT", "ALERT", "MANUAL_TEST"].includes(readingKind)) throw new HttpError(400, "INVALID_READING_KIND");
   const sourceEventKey = optionalString(body, "source_event_key", 256);
   const metadata = body.metadata == null ? {} : body.metadata;
   if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) throw new HttpError(400, "INVALID_METADATA");
