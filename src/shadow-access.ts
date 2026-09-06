@@ -169,7 +169,7 @@ export async function getShadowAccess(req: Request, env: ShadowAccessEnv, rid: s
       iot: hasAny("iot.view"),
       documents: hasOrgOrUnit("document.view"),
       document_sensitive: hasOrgOrUnit("document.sensitive_view"),
-      compare: hasAny("inventory.view"),
+      compare: hasOrg("inventory.view"),
       readiness: hasOrg("organization.view")
     },
     organization_scope: organizationScope,
