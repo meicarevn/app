@@ -56,7 +56,7 @@
       sessionStorage.setItem("meicare.shadow.gateway", location.origin);
       sessionStorage.setItem("meicare.shadow.organization", ORGANIZATION_ID);
       document.getElementById("password").value = "";
-      location.replace("./index.html");
+      location.replace("./");
     } catch (error) {
       clearPreviewSession();
       document.getElementById("password").value = "";
