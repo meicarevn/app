@@ -1,0 +1,68 @@
+name: V4_011E1 Isolated Target Diagnostic
+
+on:
+  push:
+    branches:
+      - v4-011e1-logical-restore-drill
+    paths:
+      - ".github/workflows/v4-011e1-target-diagnostic.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  target-diagnostic:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Start isolated Supabase PostgreSQL 17 target
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker run -d --name meicare-v4-011e1-diagnostic \
+            -e POSTGRES_PASSWORD=postgres \
+            -p 127.0.0.1:54322:5432 \
+            public.ecr.aws/supabase/postgres:17.6.1.165 >/dev/null
+          for attempt in $(seq 1 60); do
+            if pg_isready -h 127.0.0.1 -p 54322 -U postgres >/dev/null 2>&1; then exit 0; fi
+            sleep 2
+          done
+          docker logs meicare-v4-011e1-diagnostic --tail 100
+          exit 1
+
+      - name: Inspect managed-role and auth contracts
+        shell: bash
+        env:
+          DB: postgresql://postgres:postgres@127.0.0.1:54322/postgres
+        run: |
+          set -euo pipefail
+          echo '--- roles ---'
+          psql "$DB" -X -P pager=off -c "select rolname, rolsuper, rolcreaterole, rolcreatedb, rolcanlogin from pg_roles where rolname in ('postgres','anon','authenticated','service_role','supabase_auth_admin') order by rolname;"
+          echo '--- membership ---'
+          psql "$DB" -X -P pager=off -c "select pg_has_role('postgres','supabase_auth_admin','MEMBER') as postgres_member_of_supabase_auth_admin;"
+          echo '--- auth schema ---'
+          psql "$DB" -X -P pager=off -c "select n.nspname, pg_get_userbyid(n.nspowner) as owner from pg_namespace n where n.nspname='auth';"
+          echo '--- auth objects ---'
+          psql "$DB" -X -P pager=off -c "select c.relname, c.relkind, pg_get_userbyid(c.relowner) as owner from pg_class c join pg_namespace n on n.oid=c.relnamespace where n.nspname='auth' and c.relname='users';"
+          psql "$DB" -X -P pager=off -c "select p.proname, pg_get_userbyid(p.proowner) as owner from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='auth' and p.proname in ('uid','jwt','role') order by p.proname;"
+
+      - name: Verify reversible auth-schema compatibility write
+        shell: bash
+        env:
+          DB: postgresql://postgres:postgres@127.0.0.1:54322/postgres
+        run: |
+          set -euo pipefail
+          psql "$DB" -X -v ON_ERROR_STOP=1 <<'SQL'
+          begin;
+          set local role supabase_auth_admin;
+          create or replace function auth.meicare_restore_probe() returns integer
+          language sql stable as $$ select 1 $$;
+          select auth.meicare_restore_probe();
+          rollback;
+          SQL
+
+      - name: Cleanup
+        if: always()
+        shell: bash
+        run: docker rm -f meicare-v4-011e1-diagnostic >/dev/null 2>&1 || true
