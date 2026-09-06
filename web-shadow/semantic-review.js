@@ -161,11 +161,11 @@
       const b = renderB(rows);
       metrics.innerHTML = [
         metric("Inventory rows", rows.length, "Shadow read only"),
-        metric("A1 stockout + insufficient", a.total, "Expected acceptance cohort", "warning"),
+        metric("A1 stockout + insufficient", a.total, "Approved A1 cohort", "warning"),
         metric("Transfer review", a.transfers, "Có usable stock ở kho khác", "info"),
         metric("Procurement review", a.procurement, "Organization-wide zero", "danger"),
         metric("B1 expiry positions", b.total, "Direct time-window evidence", "warning"),
-        metric("Semantic model", 1010, "V4_010C_A1_B1")
+        metric("B1 CRITICAL", b.severity.CRITICAL || 0, "Direct expiry-window severity", "danger")
       ].join("");
       statusBox.className = "semantic-status success";
       statusBox.innerHTML = `<strong>Shadow projection loaded.</strong> ${fmt(rows.length)} positions processed; production stock_status and alert publication were not changed.`;
