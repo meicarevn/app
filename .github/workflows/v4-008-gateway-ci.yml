@@ -1,0 +1,46 @@
+name: V4 Gateway CI
+
+on:
+  pull_request:
+    paths:
+      - "src/**"
+      - "test/**"
+      - "scripts/**"
+      - "package.json"
+      - "tsconfig.json"
+      - "wrangler.toml.example"
+      - ".github/workflows/v4-008-gateway-ci.yml"
+      - ".github/workflows/v4-008c-canary-smoke.yml"
+  push:
+    branches:
+      - "v4-008-cloudflare-integration"
+    paths:
+      - "src/**"
+      - "test/**"
+      - "scripts/**"
+      - "package.json"
+      - "tsconfig.json"
+      - "wrangler.toml.example"
+      - ".github/workflows/v4-008-gateway-ci.yml"
+      - ".github/workflows/v4-008c-canary-smoke.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  gateway-checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Install dependencies
+        run: npm install --ignore-scripts --no-audit --no-fund
+      - name: Typecheck
+        run: npm run check
+      - name: Unit tests
+        run: npm test
+      - name: Canary harness syntax check
+        run: node --check scripts/canary-smoke.mjs
