@@ -1,6 +1,6 @@
 # V4_010 — Full Shadow Frontend Preview Acceptance
 
-Status: **ISOLATED PREVIEW DEPLOYED / AUTOMATED READ-ONLY SMOKE PASS / AUTHENTICATED IPAD ACCEPTANCE PARTIAL**
+Status: **ISOLATED PREVIEW DEPLOYED / AUTOMATED READ-ONLY SMOKE PASS / AUTHENTICATED IPAD ACCEPTANCE PASS**
 
 Issue: #19
 
@@ -24,7 +24,7 @@ The preview does not use or expose a Supabase service-role key.
 
 ## Deployment and automated evidence
 
-Latest visual-fix head: `37525b2c3c4ceebde2211f53b081b7d9ffdfd3db`.
+Latest visual-fix head before manual acceptance: `37525b2c3c4ceebde2211f53b081b7d9ffdfd3db`.
 
 GitHub Actions evidence on this head:
 
@@ -51,32 +51,37 @@ Live preview smoke passed on the first check for every route:
 - unauthenticated `/v4/shadow/overview` = **401 UNAUTHORIZED**;
 - POST `/v4/shadow/overview` = **405 METHOD_NOT_ALLOWED** before authentication.
 
-## Authenticated iPad evidence and findings
+## Authenticated iPad acceptance
 
 Authenticated screenshots supplied from iPad confirm that:
 
 - Supabase login completes and redirects to the Shadow UI;
 - current session resolves as `OWNER` with `ORGANIZATION` scope;
-- effective permission count is visible;
+- effective permission count is visible (`32` in the captured session);
 - Overview loads V4 operational metrics;
 - V3 ↔ V4 comparison loads and shows `2,244` rows on both sides with quantity mismatch `0`;
-- semantic mismatch count `1,693` and representative `HEALTHY`, `INSUFFICIENT_DATA`, and `EXPIRY_RISK` rows are visible.
+- the green quantity-truth confirmation is visible and readable;
+- semantic mismatch count `1,693` is visible with representative `DEFAULT_HEALTHY → HEALTHY`, `OUT_OF_STOCK → INSUFFICIENT_DATA`, and healthy/low-stock → `EXPIRY_RISK` samples;
+- the previously false “Chưa cấu hình kết nối”, false scope warning, and empty red error bar are no longer present after refresh;
+- dark-mode contrast is readable;
+- the tablet top bar is compact enough to preserve role/session controls without wrapping;
+- the horizontal navigation and large comparison table remain usable on iPad.
 
-The screenshots also revealed three presentation defects, which are now fixed in the preview branch:
+The manual iPad acceptance is therefore **PASS** for the current isolated Shadow preview.
 
-1. elements carrying the HTML `hidden` attribute were still visible because `.notice { display:flex }` overrode the browser hidden rule; this caused false “Chưa cấu hình kết nối”, false “Role có phạm vi giới hạn”, and an empty red error bar even while data was successfully loaded;
-2. the login card used system `Canvas` colors while the rest of the app used dark-mode variables, producing white-on-white/low-contrast text on iPad dark mode;
+Previously observed presentation defects were fixed before this acceptance:
+
+1. elements carrying the HTML `hidden` attribute were still visible because `.notice { display:flex }` overrode the browser hidden rule;
+2. the login card used system `Canvas` colors while the rest of the app used dark-mode variables, producing low contrast;
 3. the tablet top bar was too crowded and allowed control labels to wrap.
 
-Current fixes:
+Current fixes remain:
 
 - global `[hidden] { display:none!important; }` in the Shadow role UX stylesheet;
 - explicit dark/light login surface and text variables plus `color-scheme` metadata;
 - improved dark-mode warning/error/success contrast;
 - tablet header compaction, non-wrapping controls, hidden redundant Shadow badge/manual connection button at tablet widths;
-- the authenticated role/session chips and horizontal read-navigation remain preserved.
-
-A fresh iPad refresh/reopen is still required to visually confirm these corrections, so authenticated device acceptance is **partial**, not yet complete.
+- authenticated role/session chips and horizontal read-navigation preserved.
 
 ## Read-only controls
 
@@ -106,14 +111,18 @@ RLS remains authoritative after these UI/API gates.
 - all eight read views render without mutation controls;
 - role badge and current scope remain visible.
 
+Desktop/laptop manual acceptance has not yet been separately recorded in V4_010.
+
 ### Tablet / iPad
 
-- navigation changes to the fixed horizontal layout;
+**PASS** on authenticated Founder A / OWNER session:
+
+- navigation uses the fixed horizontal layout;
 - top-bar controls do not wrap or obscure content;
 - hidden notices remain absent when the authenticated session is configured and organization-scoped;
 - no content is obscured by navigation;
 - touch targets remain suitable for touch interaction;
-- large tables scroll independently rather than shrinking columns below readability.
+- large tables remain independently scrollable/readable.
 
 ### Mobile
 
@@ -121,6 +130,8 @@ RLS remains authoritative after these UI/API gates.
 - cards collapse to a single-column layout;
 - preview/session controls remain usable;
 - no horizontal page overflow outside intentional table/navigation scroll regions.
+
+Mobile manual acceptance has not yet been separately recorded in V4_010.
 
 ## Production invariant
 
@@ -139,11 +150,11 @@ The preview must not change:
 
 ## Promotion blockers
 
-The preview is technically deployed and automated read-only smoke is complete, but `frontend_v4_ready` must remain false while any of the following remain unresolved:
+The isolated preview and authenticated iPad acceptance are complete, but `frontend_v4_ready` must remain false while any of the following remain unresolved:
 
-- refreshed authenticated iPad/device visual acceptance is incomplete;
 - Founder B semantic review for the 284 zero-stock/insufficient-evidence cases;
 - Founder B review of the 19 expiry-priority cases;
 - demand/forecast coverage remains absent;
+- desktop/mobile acceptance is not yet separately evidenced;
 - global frontend release approval has not been recorded;
 - broader production-gate blockers remain open.
