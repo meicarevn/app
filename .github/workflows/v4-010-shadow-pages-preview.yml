@@ -89,28 +89,31 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          for attempt in $(seq 1 12); do
-            code=$(curl -sS -o /tmp/root.html -w '%{http_code}' "$PREVIEW_URL/" || true)
-            if [ "$code" = "200" ] && grep -q 'SHADOW · READ ONLY' /tmp/root.html; then break; fi
-            if [ "$attempt" = "12" ]; then echo "Preview root did not become ready"; exit 1; fi
-            sleep 5
-          done
 
-          code=$(curl -sS -o /tmp/login.html -w '%{http_code}' "$PREVIEW_URL/login.html")
-          test "$code" = "200"
-          grep -q 'V4_010' /tmp/login.html
+          wait_for() {
+            local label="$1" method="$2" url="$3" expected="$4" marker="$5" body="$6"
+            for attempt in $(seq 1 12); do
+              if [ "$method" = "POST" ]; then
+                code=$(curl -sS -X POST -H 'content-type: application/json' -d '{}' -o "$body" -w '%{http_code}' "$url" || true)
+              else
+                code=$(curl -sS -o "$body" -w '%{http_code}' "$url" || true)
+              fi
+              echo "$label attempt=$attempt status=$code"
+              if [ "$code" = "$expected" ] && grep -q "$marker" "$body"; then return 0; fi
+              if [ "$attempt" = "12" ]; then
+                echo "$label failed; expected HTTP $expected and marker $marker"
+                cat "$body" || true
+                return 1
+              fi
+              sleep 5
+            done
+          }
 
-          code=$(curl -sS -o /tmp/session.json -w '%{http_code}' "$PREVIEW_URL/v4/shadow/session?organization_id=$ORG_ID")
-          test "$code" = "401"
-          grep -q 'UNAUTHORIZED' /tmp/session.json
-
-          code=$(curl -sS -o /tmp/overview.json -w '%{http_code}' "$PREVIEW_URL/v4/shadow/overview?organization_id=$ORG_ID")
-          test "$code" = "401"
-          grep -q 'UNAUTHORIZED' /tmp/overview.json
-
-          code=$(curl -sS -X POST -H 'content-type: application/json' -d '{}' -o /tmp/post.json -w '%{http_code}' "$PREVIEW_URL/v4/shadow/overview?organization_id=$ORG_ID")
-          test "$code" = "405"
-          grep -q 'METHOD_NOT_ALLOWED' /tmp/post.json
+          wait_for "root" GET "$PREVIEW_URL/" 200 'SHADOW · READ ONLY' /tmp/root.html
+          wait_for "login" GET "$PREVIEW_URL/login.html" 200 'V4_010' /tmp/login.html
+          wait_for "session unauthenticated" GET "$PREVIEW_URL/v4/shadow/session?organization_id=$ORG_ID" 401 'UNAUTHORIZED' /tmp/session.json
+          wait_for "overview unauthenticated" GET "$PREVIEW_URL/v4/shadow/overview?organization_id=$ORG_ID" 401 'UNAUTHORIZED' /tmp/overview.json
+          wait_for "POST fail closed" POST "$PREVIEW_URL/v4/shadow/overview?organization_id=$ORG_ID" 405 'METHOD_NOT_ALLOWED' /tmp/post.json
 
       - name: Preview deployment summary
         if: always()
