@@ -1,0 +1,112 @@
+name: V4_011E1 Backup Restore Verification Preparation
+
+on:
+  push:
+    branches:
+      - v4-011e1-backup-restore-verification
+    paths:
+      - "docs/V4_011E1_BACKUP_RESTORE_VERIFICATION.md"
+      - "evidence/v4-011e1/**"
+      - "scripts/v4-011e1-restore-manifest.sql"
+      - "scripts/v4-011e1-compare-manifests.cjs"
+      - ".github/workflows/v4-011e1-backup-restore-verification.yml"
+  pull_request:
+    branches:
+      - v4-011e-global-frontend-readiness-gate
+    paths:
+      - "docs/V4_011E1_BACKUP_RESTORE_VERIFICATION.md"
+      - "evidence/v4-011e1/**"
+      - "scripts/v4-011e1-restore-manifest.sql"
+      - "scripts/v4-011e1-compare-manifests.cjs"
+      - ".github/workflows/v4-011e1-backup-restore-verification.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  preparation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Existing typecheck and tests
+        run: |
+          npm run check
+          npm test
+
+      - name: Validate evidence JSON and comparator
+        run: |
+          node -e "JSON.parse(require('node:fs').readFileSync('evidence/v4-011e1/production-restore-manifest-2026-09-06.json','utf8'))"
+          node scripts/v4-011e1-compare-manifests.cjs \
+            evidence/v4-011e1/production-restore-manifest-2026-09-06.json \
+            evidence/v4-011e1/production-restore-manifest-2026-09-06.json
+
+      - name: Preparation diff whitelist
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin v4-011e-global-frontend-readiness-gate
+          allowed='^(docs/V4_011E1_BACKUP_RESTORE_VERIFICATION\.md|evidence/v4-011e1/production-restore-manifest-2026-09-06\.json|scripts/v4-011e1-restore-manifest\.sql|scripts/v4-011e1-compare-manifests\.cjs|\.github/workflows/v4-011e1-backup-restore-verification\.yml)$'
+          changed=$(git diff --name-only origin/v4-011e-global-frontend-readiness-gate...HEAD)
+          printf '%s\n' "$changed"
+          unexpected=$(printf '%s\n' "$changed" | grep -Ev "$allowed" || true)
+          if [ -n "$unexpected" ]; then
+            echo "Unexpected file(s) in V4_011E1 preparation diff:"
+            printf '%s\n' "$unexpected"
+            exit 1
+          fi
+
+      - name: Fail-closed safety guards
+        shell: bash
+        run: |
+          set -euo pipefail
+          SQL=scripts/v4-011e1-restore-manifest.sql
+          DOC=docs/V4_011E1_BACKUP_RESTORE_VERIFICATION.md
+          WF=.github/workflows/v4-011e1-backup-restore-verification.yml
+
+          if grep -Eiq '^[[:space:]]*(insert|update|delete|merge|create|alter|drop|truncate|grant|revoke|call|do|copy)[[:space:]]' "$SQL"; then
+            echo 'Mutating SQL detected in restore-manifest query'
+            exit 1
+          fi
+
+          grep -q 'ACTUAL RESTORE DRILL PENDING EXPLICIT FOUNDER A DOWNTIME APPROVAL' "$DOC"
+          grep -q 'BACKUP_RESTORE_EVIDENCE_REQUIRED.*remains.*BLOCKING' "$DOC"
+          grep -q 'No production pause or restore during preparation' "$DOC"
+          grep -q 'frontend_v4_ready=false' "$DOC"
+
+          if grep -Eq '^[[:space:]]+[A-Z0-9_]+:[[:space:]]+\$\{\{[[:space:]]*secrets\.' "$WF"; then
+            echo 'Repository secret consumption found in preparation workflow'
+            exit 1
+          fi
+
+          deploy_a='wrangler'
+          deploy_b='pages deploy'
+          if grep -Fi "$deploy_a" "$WF" | grep -Fi "$deploy_b" >/dev/null; then
+            echo 'Cloudflare deployment command found in preparation workflow'
+            exit 1
+          fi
+
+          if grep -Eiq 'supabase[[:space:]]+(db[[:space:]]+push|migration[[:space:]]+up)|frontend_v4_ready[[:space:]]*=[[:space:]]*true' "$WF"; then
+            echo 'Production mutation command found in preparation workflow'
+            exit 1
+          fi
+
+      - name: Preparation summary
+        run: |
+          echo "### V4_011E1 Backup/Restore Verification" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Preparation evidence validated" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Restore manifest query is read-only" >> "$GITHUB_STEP_SUMMARY"
+          echo "- No repository secrets consumed" >> "$GITHUB_STEP_SUMMARY"
+          echo "- No deploy, migration, readiness mutation, pause, or restore action" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Actual restore drill remains pending explicit Founder A approval if production downtime is used" >> "$GITHUB_STEP_SUMMARY"
