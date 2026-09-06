@@ -118,7 +118,7 @@ jobs:
           set -euo pipefail
 
           wait_for() {
-            local label="$1" method="$2" url="$3" expected="$4" marker="$5" body="$6" headers="$7"
+            local label="$1" method="$2" url="$3" expected="$4" body_marker="$5" header_marker="$6" body="$7" headers="$8"
             for attempt in $(seq 1 12); do
               if [ "$method" = "POST" ]; then
                 code=$(curl -sS -D "$headers" -X POST -H 'content-type: application/json' -d '{}' -o "$body" -w '%{http_code}' "$url" || true)
@@ -126,9 +126,18 @@ jobs:
                 code=$(curl -sS -L -D "$headers" -o "$body" -w '%{http_code}' "$url" || true)
               fi
               echo "$label attempt=$attempt status=$code"
-              if [ "$code" = "$expected" ] && grep -q "$marker" "$body"; then return 0; fi
+
+              body_ok=false
+              header_ok=false
+              if grep -q "$body_marker" "$body"; then body_ok=true; fi
+              if [ -z "$header_marker" ] || grep -Eqi "$header_marker" "$headers"; then header_ok=true; fi
+
+              if [ "$code" = "$expected" ] && [ "$body_ok" = "true" ] && [ "$header_ok" = "true" ]; then
+                return 0
+              fi
+
               if [ "$attempt" = "12" ]; then
-                echo "$label failed; expected HTTP $expected and marker $marker"
+                echo "$label failed; expected HTTP $expected, body marker $body_marker, header marker $header_marker"
                 cat "$body" || true
                 cat "$headers" || true
                 return 1
@@ -137,11 +146,9 @@ jobs:
             done
           }
 
-          wait_for "multi-axis page" GET "$SHADOW_URL/multi-axis-review" 200 'V4_011' /tmp/page.html /tmp/page.headers
-          wait_for "promoted route unauthenticated" GET "$SHADOW_URL/v4/shadow/intelligence-v4-011?organization_id=$ORG_ID" 401 'UNAUTHORIZED' /tmp/get.json /tmp/get.headers
-          grep -qi '^x-meicare-read-path: V4_011D_DB_PROJECTION' /tmp/get.headers
-          wait_for "promoted route POST fail closed" POST "$SHADOW_URL/v4/shadow/intelligence-v4-011?organization_id=$ORG_ID" 405 'METHOD_NOT_ALLOWED' /tmp/post.json /tmp/post.headers
-          grep -qi '^x-meicare-read-path: V4_011D_DB_PROJECTION' /tmp/post.headers
+          wait_for "multi-axis page" GET "$SHADOW_URL/multi-axis-review" 200 'V4_011' '' /tmp/page.html /tmp/page.headers
+          wait_for "promoted route unauthenticated" GET "$SHADOW_URL/v4/shadow/intelligence-v4-011?organization_id=$ORG_ID" 401 'UNAUTHORIZED' '^x-meicare-read-path:[[:space:]]*V4_011D_DB_PROJECTION' /tmp/get.json /tmp/get.headers
+          wait_for "promoted route POST fail closed" POST "$SHADOW_URL/v4/shadow/intelligence-v4-011?organization_id=$ORG_ID" 405 'METHOD_NOT_ALLOWED' '^x-meicare-read-path:[[:space:]]*V4_011D_DB_PROJECTION' /tmp/post.json /tmp/post.headers
 
       - name: Confirm deployment target is not global production branch
         shell: bash
