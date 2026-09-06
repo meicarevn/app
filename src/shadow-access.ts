@@ -17,7 +17,11 @@ const ROUTE_PERMISSIONS: Record<string, string> = {
   "/v4/shadow/iot": "iot.view",
   "/v4/shadow/documents": "document.view",
   "/v4/shadow/readiness": "organization.view",
-  "/v4/shadow/compare/inventory": "inventory.view"
+  "/v4/shadow/compare/inventory": "inventory.view",
+  "/v4/shadow/members": "membership.manage",
+  "/v4/shadow/member-history": "membership.manage",
+  "/v4/shadow/role-catalog": "membership.manage",
+  "/v4/shadow/scopes": "membership.manage"
 };
 
 const ROUTE_CAPABILITIES: Record<string, string> = {
@@ -28,7 +32,11 @@ const ROUTE_CAPABILITIES: Record<string, string> = {
   "/v4/shadow/iot": "iot",
   "/v4/shadow/documents": "documents",
   "/v4/shadow/readiness": "readiness",
-  "/v4/shadow/compare/inventory": "compare"
+  "/v4/shadow/compare/inventory": "compare",
+  "/v4/shadow/members": "member_admin",
+  "/v4/shadow/member-history": "member_admin",
+  "/v4/shadow/role-catalog": "member_admin",
+  "/v4/shadow/scopes": "member_admin"
 };
 
 export type ShadowAccess = {
@@ -170,7 +178,8 @@ export async function getShadowAccess(req: Request, env: ShadowAccessEnv, rid: s
       documents: hasOrgOrUnit("document.view"),
       document_sensitive: hasOrgOrUnit("document.sensitive_view"),
       compare: hasOrg("inventory.view"),
-      readiness: hasOrg("organization.view")
+      readiness: hasOrg("organization.view"),
+      member_admin: hasOrg("membership.manage")
     },
     organization_scope: organizationScope,
     scope_warning: !organizationScope
