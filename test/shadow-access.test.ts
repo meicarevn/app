@@ -65,6 +65,21 @@ describe("shadow route permission and scope gate", () => {
     )).not.toThrow();
   });
 
+  it("keeps member administration organization-scope and membership.manage only", () => {
+    expect(() => enforceShadowRoute(
+      "/v4/shadow/members",
+      access(["membership.manage"], { member_admin: true }, true)
+    )).not.toThrow();
+    expect(() => enforceShadowRoute(
+      "/v4/shadow/members",
+      access(["membership.manage"], { member_admin: false }, false)
+    )).toThrowError(/SHADOW_SCOPE_DENIED/);
+    expect(() => enforceShadowRoute(
+      "/v4/shadow/members",
+      access(["membership.view"], { member_admin: true }, true)
+    )).toThrowError(/SHADOW_PERMISSION_DENIED/);
+  });
+
   it("does not invent a permission rule for unknown routes", () => {
     expect(() => enforceShadowRoute("/v4/shadow/not-a-real-route", access([]))).not.toThrow();
   });
