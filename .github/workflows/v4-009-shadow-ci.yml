@@ -5,18 +5,23 @@ on:
     paths:
       - "src/shadow.ts"
       - "src/shadow-worker.ts"
+      - "src/shadow-access.ts"
       - "web-shadow/**"
       - "test/shadow.test.ts"
+      - "test/shadow-access.test.ts"
       - "wrangler.shadow.toml.example"
       - ".github/workflows/v4-009-shadow-ci.yml"
   push:
     branches:
       - "v4-009-frontend-shadow"
+      - "v4-009b-shadow-role-ux"
     paths:
       - "src/shadow.ts"
       - "src/shadow-worker.ts"
+      - "src/shadow-access.ts"
       - "web-shadow/**"
       - "test/shadow.test.ts"
+      - "test/shadow-access.test.ts"
       - "wrangler.shadow.toml.example"
       - ".github/workflows/v4-009-shadow-ci.yml"
 
@@ -39,10 +44,17 @@ jobs:
       - name: Unit tests
         run: npm test
       - name: Shadow UI JavaScript syntax
-        run: node --check web-shadow/app.js
+        run: |
+          node --check web-shadow/app.js
+          node --check web-shadow/role-ux.js
       - name: Shadow Worker must remain read-only
         run: |
-          if grep -Eq 'method:[[:space:]]*"(POST|PUT|PATCH|DELETE)"|SUPABASE_SERVICE_ROLE_KEY' src/shadow.ts src/shadow-worker.ts; then
+          if grep -Eq 'method:[[:space:]]*"(POST|PUT|PATCH|DELETE)"|SUPABASE_SERVICE_ROLE_KEY' src/shadow.ts src/shadow-worker.ts src/shadow-access.ts; then
             echo "Shadow read layer contains a forbidden mutation/service-role marker"
             exit 1
           fi
+      - name: RBAC session gate must be present
+        run: |
+          grep -q '/v4/shadow/session' src/shadow-worker.ts
+          grep -q 'SHADOW_PERMISSION_DENIED' src/shadow-access.ts
+          grep -q 'role-ux.js' web-shadow/index.html
