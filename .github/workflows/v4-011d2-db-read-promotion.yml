@@ -23,6 +23,8 @@ jobs:
       ORG_ID: 68d83220-4e5d-46e7-8bd3-7863205985f4
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - uses: actions/setup-node@v4
         with:
@@ -58,8 +60,9 @@ jobs:
             echo "Mutation fetch found in promoted read route"
             exit 1
           fi
-          if find supabase/migrations -type f -newer docs/V4_011D_FOUNDER_A_APPROVAL.md 2>/dev/null | grep -q .; then
-            echo "Unexpected migration file introduced in execution boundary"
+          git fetch origin v4-011d-controlled-read-promotion:refs/remotes/origin/v4-011d-controlled-read-promotion
+          if git diff --name-only origin/v4-011d-controlled-read-promotion...HEAD -- 'supabase/migrations/**' | grep -q .; then
+            echo "Unexpected Supabase migration introduced in V4_011D2 execution"
             exit 1
           fi
 
