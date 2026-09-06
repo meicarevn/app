@@ -108,7 +108,7 @@ jobs:
           grep -q 'set_member_status_v4' "$FILE"
           grep -q 'assign_membership_role_v4' "$FILE"
           grep -q 'end_membership_role_v4' "$FILE"
-          if grep -Eq '\.from\(["'"']organization_members["'"']\).*\.(insert|update|upsert|delete)' "$FILE"; then
-            echo "Edge Function performs forbidden direct organization_members mutation"
+          if grep -q 'from("organization_members")' "$FILE" || grep -q "from('organization_members')" "$FILE"; then
+            echo "Edge Function references organization_members directly; use governed RPCs instead"
             exit 1
           fi
