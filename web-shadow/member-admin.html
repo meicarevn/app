@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta name="robots" content="noindex,nofollow" />
-  <title>MEICARE · Quản trị thành viên V4</title>
+  <title>MEICARE · Quản trị thành viên V4 Canary</title>
   <link rel="stylesheet" href="./styles.css" />
   <link rel="stylesheet" href="./role-ux.css" />
   <link rel="stylesheet" href="./member-admin.css" />
@@ -14,10 +14,10 @@
   <header class="topbar">
     <div class="brand">
       <div class="brand-mark" aria-hidden="true">M</div>
-      <div><strong>MEICARE</strong><span>Member Governance V4</span></div>
+      <div><strong>MEICARE</strong><span>Member Governance V4 Canary</span></div>
     </div>
     <div class="topbar-actions">
-      <span class="shadow-badge">SHADOW · GOVERNED WRITE</span>
+      <span class="shadow-badge" id="memberAdminCanaryMode">V4 CANARY · OFF</span>
       <a class="secondary-button admin-back-link" href="./index.html">← Shadow Dashboard</a>
     </div>
   </header>
@@ -25,16 +25,17 @@
   <main class="member-admin-shell" id="content" tabindex="-1">
     <section class="page-heading member-heading">
       <div>
-        <p class="eyebrow">V4_009F · Member Lifecycle</p>
+        <p class="eyebrow">V4_009G · Controlled Routing</p>
         <h1>Thành viên & phân quyền</h1>
-        <p>Mời thành viên, quản lý vòng đời tài khoản và role/scope. Mọi thay đổi bắt buộc có lý do audit.</p>
+        <p>Mời thành viên, quản lý vòng đời tài khoản và role/scope. Mọi thay đổi bắt buộc có lý do audit và chỉ được phép khi V4 canary được bật rõ ràng.</p>
+        <p class="muted-small" id="memberAdminCanaryRoute">Write path: disabled; legacy UI remains rollback path</p>
       </div>
       <button id="refreshMembers" class="primary-button" type="button">Làm mới</button>
     </section>
 
     <section class="notice warning" id="releaseGateNotice">
-      <strong>Production gate đang khóa.</strong>
-      <span>UI này đã được chuẩn bị cho V4 nhưng backend lifecycle/Edge Function chưa được deploy production nếu chưa có Founder A approval.</span>
+      <strong>V4 member-admin canary đang tắt.</strong>
+      <span>Giao diện chỉ đọc. Legacy production member-admin vẫn là rollback path; không có fallback write tự động.</span>
     </section>
     <section id="adminError" class="notice error" hidden></section>
     <section id="adminSuccess" class="notice success" hidden></section>
@@ -78,7 +79,7 @@
   <dialog id="memberActionDialog">
     <form method="dialog" id="memberActionForm" class="admin-dialog-form">
       <div class="dialog-heading">
-        <div><p class="eyebrow" id="actionEyebrow">Governed action</p><h2 id="actionTitle">Cập nhật thành viên</h2></div>
+        <div><p class="eyebrow" id="actionEyebrow">Governed canary action</p><h2 id="actionTitle">Cập nhật thành viên</h2></div>
         <button class="icon-button" value="cancel" type="submit" aria-label="Đóng">×</button>
       </div>
       <p id="actionDescription" class="muted"></p>
@@ -95,6 +96,6 @@
     </form>
   </dialog>
 
-  <script src="./member-admin.js" defer></script>
+  <script src="./member-admin-v4-canary.js" defer></script>
 </body>
 </html>
