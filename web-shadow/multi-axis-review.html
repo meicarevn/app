@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="color-scheme" content="light dark" />
+  <meta name="robots" content="noindex,nofollow" />
+  <title>MEICARE · V4_011 Multi-axis Intelligence</title>
+  <link rel="stylesheet" href="./styles.css" />
+  <link rel="stylesheet" href="./role-ux.css" />
+  <link rel="stylesheet" href="./multi-axis-review.css" />
+</head>
+<body>
+  <a class="skip-link" href="#content">Bỏ qua điều hướng</a>
+  <header class="topbar">
+    <div class="brand">
+      <div class="brand-mark" aria-hidden="true">M</div>
+      <div><strong>MEICARE</strong><span>V4_011 Multi-axis Intelligence</span></div>
+    </div>
+    <div class="topbar-actions">
+      <span class="shadow-badge">SHADOW · READ ONLY</span>
+      <a class="secondary-button" href="./index.html">← Dashboard</a>
+    </div>
+  </header>
+
+  <main class="multi-shell" id="content" tabindex="-1">
+    <section class="page-heading">
+      <div>
+        <p class="eyebrow">V4_011 · MULTI-AXIS SHADOW</p>
+        <h1>Inventory Intelligence theo nhiều trục</h1>
+        <p>Tách availability, expiry, evidence và human-review recommendation. Không thay đổi stock_status production, alerts hay ledger.</p>
+      </div>
+      <button id="refreshButton" class="primary-button" type="button">Làm mới</button>
+    </section>
+
+    <section id="statusBox" class="multi-status">Đang chờ tải Shadow projection…</section>
+    <section id="metrics" class="metrics-grid multi-metrics"></section>
+
+    <section class="panel">
+      <div class="panel-header">
+        <div>
+          <h2>Acceptance cohorts</h2>
+          <p>Founder B-approved A1/B1 phải giữ nguyên trong V4_011.</p>
+        </div>
+      </div>
+      <div class="panel-body cohort-grid" id="cohortSummary"></div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-header">
+        <div>
+          <h2>Multi-axis projection</h2>
+          <p>Mỗi recommendation chỉ là human review; không có execution quantity.</p>
+        </div>
+      </div>
+      <div class="panel-body">
+        <div class="toolbar multi-toolbar">
+          <label>Availability
+            <select id="availabilityFilter">
+              <option value="">Tất cả</option>
+              <option>OUT_OF_STOCK</option><option>CRITICAL</option><option>REORDER</option><option>HEALTHY</option><option>OVERSTOCK</option><option>INSUFFICIENT_REFERENCE</option>
+            </select>
+          </label>
+          <label>Expiry
+            <select id="expiryFilter"><option value="">Tất cả</option><option>CRITICAL</option><option>HIGH</option><option>WARNING</option><option>NONE</option></select>
+          </label>
+          <label>Recommendation
+            <select id="recommendationFilter"><option value="">Tất cả</option><option>TRANSFER_REVIEW</option><option>PROCUREMENT_REVIEW</option><option>FEFO_REVIEW</option><option>POLICY_REVIEW</option><option>NONE</option></select>
+          </label>
+          <label>Cohort
+            <select id="cohortFilter"><option value="">Tất cả</option><option>A1</option><option>B1</option><option>NONE</option></select>
+          </label>
+        </div>
+        <div id="rowsRoot"></div>
+        <div class="pagination">
+          <span id="pageInfo"></span>
+          <div class="buttons"><button id="prevButton" class="secondary-button" type="button">← Trước</button><button id="nextButton" class="secondary-button" type="button">Sau →</button></div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script src="./multi-axis-review.js" defer></script>
+</body>
+</html>
