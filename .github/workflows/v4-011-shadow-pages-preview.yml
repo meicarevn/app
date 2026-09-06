@@ -53,7 +53,7 @@ jobs:
             exit 1
           fi
           grep -q 'V4_011 · MULTI-AXIS SHADOW' web-shadow/multi-axis-review.html
-          grep -q 'V4_011_MULTI_AXIS' web-shadow/multi-axis-review.js
+          grep -q 'intelligence-v4-011' web-shadow/multi-axis-review.js
           grep -q 'projectMultiAxisRows' shadow-pages/functions/v4/shadow/intelligence-v4-011.ts
           grep -q 'organization_scope' shadow-pages/functions/v4/shadow/intelligence-v4-011.ts
           grep -q 'METHOD_NOT_ALLOWED' shadow-pages/functions/v4/shadow/intelligence-v4-011.ts
