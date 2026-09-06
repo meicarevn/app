@@ -58,7 +58,7 @@ jobs:
           grep -q 'organization_scope' shadow-pages/functions/v4/shadow/intelligence-v4-011.ts
           grep -q 'METHOD_NOT_ALLOWED' shadow-pages/functions/v4/shadow/intelligence-v4-011.ts
           grep -q 'recommendation_requires_human_review' src/intelligence-v4-011.ts
-          if grep -Eq 'method:[[:space:]]*["'"'](POST|PUT|PATCH|DELETE)' shadow-pages/functions/v4/shadow/intelligence-v4-011.ts; then
+          if grep -Eq 'method:[[:space:]]*"(POST|PUT|PATCH|DELETE)"' shadow-pages/functions/v4/shadow/intelligence-v4-011.ts; then
             echo "V4_011 Shadow endpoint contains a mutation fetch"
             exit 1
           fi
