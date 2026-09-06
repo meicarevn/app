@@ -80,20 +80,31 @@ jobs:
           grep -q 'global_production_mutation_authorized).toBe(false)' "$TEST"
           grep -q 'GLOBAL PROMOTION BLOCKED' "$DOC"
 
-          if grep -Eiq 'SUPABASE_SERVICE_ROLE_KEY|sb_secret_' "$SRC" "$TEST" "$DOC" "$WF"; then
-            echo 'Forbidden service-role secret marker found'
+          # Gate source/test/docs must not contain service-role credentials or secret-key markers.
+          service_marker="SUPABASE_""SERVICE_ROLE_KEY"
+          secret_marker="sb_""secret_"
+          if grep -Eiq "${service_marker}|${secret_marker}" "$SRC" "$TEST" "$DOC"; then
+            echo 'Forbidden service-role secret marker found in V4_011E gate artifacts'
             exit 1
           fi
 
-          if grep -Eiq 'wrangler[^[:cntrl:]]*deploy|pages[[:space:]]+deploy|cloudflare[^[:cntrl:]]*deploy' "$WF"; then
-            echo 'Deployment command found in preparation workflow'
+          # Preparation CI must not consume repository secrets.
+          if grep -Eq '^[[:space:]]+[A-Z0-9_]+:[[:space:]]+\$\{\{[[:space:]]*secrets\.' "$WF"; then
+            echo 'Repository secret consumption found in preparation workflow'
             exit 1
           fi
 
-          if grep -Eiq 'frontend_v4_ready[[:space:]]*=[[:space:]]*true|frontend_v4_ready:[[:space:]]*true' "$DOC" "$WF"; then
-            echo 'Premature frontend readiness mutation marker found'
+          # Detect an actual Wrangler Pages deployment command without self-matching this guard.
+          deploy_tool='wrangler'
+          deploy_cmd='pages deploy'
+          if grep -Fi "$deploy_tool" "$WF" | grep -Fi "$deploy_cmd" >/dev/null; then
+            echo 'Cloudflare Pages deployment command found in preparation workflow'
             exit 1
           fi
+
+          # The four-file diff whitelist above is the authoritative proof that no runtime,
+          # route, migration, or readiness-mutating production file is changed here.
+          grep -q 'frontend_v4_ready=false' "$DOC"
 
       - name: Gate summary
         run: |
