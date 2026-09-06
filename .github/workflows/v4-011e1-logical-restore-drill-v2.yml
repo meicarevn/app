@@ -164,8 +164,8 @@ jobs:
               return 0
             fi
             local exists
-            exists=$(psql "$RESTORE_DB_URL" -X -q -A -t -v ON_ERROR_STOP=1 -v role="$role" \
-              -c "select count(*) from pg_roles where rolname = :'role';")
+            exists=$(psql "$RESTORE_DB_URL" -X -q -A -t -v ON_ERROR_STOP=1 \
+              -c "select count(*) from pg_roles where rolname = '$role';")
             if [ "$exists" = "0" ]; then
               psql "$RESTORE_DB_URL" -X -q -v ON_ERROR_STOP=1 -c "create role \"$role\" nologin;"
             fi
