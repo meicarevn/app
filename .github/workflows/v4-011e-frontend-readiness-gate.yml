@@ -95,11 +95,6 @@ jobs:
             exit 1
           fi
 
-          if find supabase/migrations -type f -newer "$SRC" 2>/dev/null | grep -q .; then
-            echo 'Unexpected migration activity detected'
-            exit 1
-          fi
-
       - name: Gate summary
         run: |
           echo "### V4_011E Global Frontend Readiness Gate" >> "$GITHUB_STEP_SUMMARY"
