@@ -1,0 +1,180 @@
+name: V4_012 Dedicated MEICARE Platform Pages
+
+on:
+  push:
+    branches:
+      - v4-012-meicare-platform
+    paths:
+      - "web-platform/**"
+      - "web-shadow/**"
+      - "shadow-pages/functions/**"
+      - "src/**"
+      - "test/**"
+      - ".github/workflows/v4-012-meicare-platform-pages.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: v4-012-meicare-platform-pages
+  cancel-in-progress: false
+
+jobs:
+  validate-create-deploy-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      PROJECT_NAME: meicare-platform
+      PRODUCTION_BRANCH: v4-012-meicare-platform
+      PLATFORM_URL: https://meicare-platform.pages.dev
+      ORG_ID: 68d83220-4e5d-46e7-8bd3-7863205985f4
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install and validate V4 application
+        run: |
+          npm install
+          npm run check
+          npm test
+          node --check web-shadow/app.js
+          node --check web-shadow/role-ux.js
+          node --check web-shadow/login.js
+          node --check web-shadow/multi-axis-review.js
+
+      - name: Static V4 platform safety guards
+        shell: bash
+        run: |
+          set -euo pipefail
+          if grep -R -Eiq 'SUPABASE_SERVICE_ROLE_KEY|sb_secret_|service_role' web-platform web-shadow shadow-pages/functions; then
+            echo "Forbidden service credential marker found in V4 frontend source"
+            exit 1
+          fi
+          grep -q 'MEICARE PLATFORM · V4' web-platform/index.html
+          grep -q 'PRE-PRODUCTION · READ ONLY' web-platform/index.html
+          grep -q 'METHOD_NOT_ALLOWED' 'shadow-pages/functions/v4/shadow/[[path]].ts'
+          grep -q 'getShadowAccess' 'shadow-pages/functions/v4/shadow/[[path]].ts'
+          grep -q 'enforceShadowRoute' 'shadow-pages/functions/v4/shadow/[[path]].ts'
+          if grep -R -n 'frontend_v4_ready[[:space:]]*=[[:space:]]*true' web-platform .github/workflows/v4-012-meicare-platform-pages.yml; then
+            echo "V4_012 must not set frontend_v4_ready=true"
+            exit 1
+          fi
+
+      - name: Assemble dedicated Pages application
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf platform-pages
+          mkdir -p platform-pages/public platform-pages/functions
+          cp -R web-shadow/. platform-pages/public/
+          cp -R shadow-pages/functions/. platform-pages/functions/
+          cp web-platform/index.html platform-pages/public/index.html
+          cp web-platform/platform.css platform-pages/public/platform.css
+          cat > platform-pages/public/_headers <<'EOF'
+          /*
+            X-Robots-Tag: noindex, nofollow
+            Referrer-Policy: strict-origin-when-cross-origin
+            X-Content-Type-Options: nosniff
+          EOF
+          test -f platform-pages/public/app.js
+          test -f platform-pages/public/login.html
+          test -f platform-pages/public/multi-axis-review.html
+          test -f 'platform-pages/functions/v4/shadow/[[path]].ts'
+
+      - name: Cloudflare credentials status
+        id: cf
+        env:
+          CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CF_ACCOUNT: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "${CF_TOKEN:-}" ] || [ -z "${CF_ACCOUNT:-}" ]; then
+            echo "Cloudflare credentials missing"
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            exit 2
+          fi
+          echo "::add-mask::$CF_TOKEN"
+          echo "ready=true" >> "$GITHUB_OUTPUT"
+
+      - name: Ensure dedicated Cloudflare Pages project exists
+        if: steps.cf.outputs.ready == 'true'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          body=/tmp/cf-project.json
+          code=$(curl -sS -o "$body" -w '%{http_code}' \
+            -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+            "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/pages/projects/$PROJECT_NAME" || true)
+          if [ "$code" = "200" ]; then
+            echo "Cloudflare Pages project already exists: $PROJECT_NAME"
+          elif [ "$code" = "404" ]; then
+            npx --yes wrangler@4 pages project create "$PROJECT_NAME" --production-branch "$PRODUCTION_BRANCH"
+          else
+            echo "Unable to verify Pages project; HTTP $code"
+            cat "$body" | jq '{success,errors,messages}' || true
+            exit 1
+          fi
+
+      - name: Deploy MEICARE Platform V4
+        if: steps.cf.outputs.ready == 'true'
+        working-directory: platform-pages
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          npx --yes wrangler@4 pages deploy public \
+            --project-name "$PROJECT_NAME" \
+            --branch "$PRODUCTION_BRANCH" \
+            --commit-hash "$GITHUB_SHA" \
+            --commit-dirty=true
+
+      - name: Live isolated platform smoke
+        if: steps.cf.outputs.ready == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          wait_for() {
+            local label="$1" method="$2" url="$3" expected="$4" marker="$5" body="$6"
+            for attempt in $(seq 1 18); do
+              if [ "$method" = "POST" ]; then
+                code=$(curl -sS -X POST -H 'content-type: application/json' -d '{}' -o "$body" -w '%{http_code}' "$url" || true)
+              else
+                code=$(curl -sS -L -o "$body" -w '%{http_code}' "$url" || true)
+              fi
+              echo "$label attempt=$attempt status=$code"
+              if [ "$code" = "$expected" ] && { [ -z "$marker" ] || grep -q "$marker" "$body"; }; then return 0; fi
+              if [ "$attempt" = "18" ]; then
+                echo "$label failed; expected HTTP $expected marker=$marker"
+                cat "$body" || true
+                return 1
+              fi
+              sleep 5
+            done
+          }
+
+          wait_for "platform root" GET "$PLATFORM_URL/" 200 'MEICARE PLATFORM · V4' /tmp/platform-root.html
+          wait_for "login" GET "$PLATFORM_URL/login" 200 '' /tmp/platform-login.html
+          wait_for "multi-axis review" GET "$PLATFORM_URL/multi-axis-review" 200 'V4_011' /tmp/platform-multi.html
+          wait_for "session unauthenticated" GET "$PLATFORM_URL/v4/shadow/session?organization_id=$ORG_ID" 401 'UNAUTHORIZED' /tmp/platform-session.json
+          wait_for "overview unauthenticated" GET "$PLATFORM_URL/v4/shadow/overview?organization_id=$ORG_ID" 401 'UNAUTHORIZED' /tmp/platform-overview.json
+          wait_for "POST fail closed" POST "$PLATFORM_URL/v4/shadow/overview?organization_id=$ORG_ID" 405 'METHOD_NOT_ALLOWED' /tmp/platform-post.json
+
+      - name: Deployment summary
+        if: always()
+        run: |
+          echo "### V4_012 Dedicated MEICARE Platform Frontend" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Pages project: $PROJECT_NAME" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Dedicated URL: $PLATFORM_URL" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Existing project meicare-smart-pharmacy: not targeted" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Runtime mode: PRE-PRODUCTION / READ ONLY" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Human JWT + Supabase RLS preserved" >> "$GITHUB_STEP_SUMMARY"
+          echo "- frontend_v4_ready remains false" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Cloudflare credentials available: ${{ steps.cf.outputs.ready }}" >> "$GITHUB_STEP_SUMMARY"
