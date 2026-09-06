@@ -9,6 +9,8 @@ on:
       - "shadow-pages/**"
       - "src/shadow.ts"
       - "src/lib.ts"
+      - "src/semantic-v4-010c.ts"
+      - "test/semantic-v4-010c.test.ts"
       - "docs/V4_010_*.md"
       - ".github/workflows/v4-010-shadow-pages-preview.yml"
   workflow_dispatch:
@@ -42,6 +44,7 @@ jobs:
           node --check web-shadow/app.js
           node --check web-shadow/role-ux.js
           node --check web-shadow/login.js
+          node --check web-shadow/semantic-review.js
 
       - name: Static preview security guards
         shell: bash
@@ -52,6 +55,8 @@ jobs:
             exit 1
           fi
           grep -q 'SHADOW · READ ONLY' web-shadow/index.html
+          grep -q 'V4_010C · FOUNDER B A1 + B1' web-shadow/semantic-review.html
+          grep -q 'V4_010C_A1_B1' web-shadow/semantic-review.js
           grep -q 'METHOD_NOT_ALLOWED' 'shadow-pages/functions/v4/shadow/[[path]].ts'
           grep -q 'SHADOW_PERMISSION_DENIED' 'shadow-pages/functions/v4/shadow/[[path]].ts'
           grep -q 'SHADOW_SCOPE_DENIED' 'shadow-pages/functions/v4/shadow/[[path]].ts'
@@ -111,6 +116,7 @@ jobs:
 
           wait_for "root" GET "$PREVIEW_URL/" 200 'SHADOW · READ ONLY' /tmp/root.html
           wait_for "login" GET "$PREVIEW_URL/login" 200 'V4_010' /tmp/login.html
+          wait_for "semantic shadow" GET "$PREVIEW_URL/semantic-review.html" 200 'V4_010C' /tmp/semantic.html
           wait_for "session unauthenticated" GET "$PREVIEW_URL/v4/shadow/session?organization_id=$ORG_ID" 401 'UNAUTHORIZED' /tmp/session.json
           wait_for "overview unauthenticated" GET "$PREVIEW_URL/v4/shadow/overview?organization_id=$ORG_ID" 401 'UNAUTHORIZED' /tmp/overview.json
           wait_for "POST fail closed" POST "$PREVIEW_URL/v4/shadow/overview?organization_id=$ORG_ID" 405 'METHOD_NOT_ALLOWED' /tmp/post.json
@@ -121,6 +127,7 @@ jobs:
           echo "### V4_010 Full Shadow Preview" >> "$GITHUB_STEP_SUMMARY"
           echo "- Target Pages project: meicare-smart-pharmacy" >> "$GITHUB_STEP_SUMMARY"
           echo "- Isolated alias: $PREVIEW_URL" >> "$GITHUB_STEP_SUMMARY"
+          echo "- V4_010C semantic acceptance page included" >> "$GITHUB_STEP_SUMMARY"
           echo "- Cloudflare credentials available: ${{ steps.cf.outputs.ready }}" >> "$GITHUB_STEP_SUMMARY"
           echo "- Normal production UI is not replaced" >> "$GITHUB_STEP_SUMMARY"
           echo "- frontend_v4_ready must remain false" >> "$GITHUB_STEP_SUMMARY"
