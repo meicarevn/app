@@ -10,6 +10,8 @@ on:
       - "src/shadow.ts"
       - "src/lib.ts"
       - "src/semantic-v4-010c.ts"
+      - "src/member-admin-read.ts"
+      - "src/shadow-access.ts"
       - "test/semantic-v4-010c.test.ts"
       - "docs/V4_010_*.md"
       - ".github/workflows/v4-010-shadow-pages-preview.yml"
@@ -58,9 +60,9 @@ jobs:
           grep -q 'V4_010C · FOUNDER B A1 + B1' web-shadow/semantic-review.html
           grep -q 'V4_010C_A1_B1' web-shadow/semantic-review.js
           grep -q 'METHOD_NOT_ALLOWED' 'shadow-pages/functions/v4/shadow/[[path]].ts'
-          grep -q 'SHADOW_PERMISSION_DENIED' 'shadow-pages/functions/v4/shadow/[[path]].ts'
-          grep -q 'SHADOW_SCOPE_DENIED' 'shadow-pages/functions/v4/shadow/[[path]].ts'
-          grep -q 'membership_effective_roles_v4' 'shadow-pages/functions/v4/shadow/[[path]].ts'
+          grep -q 'handleMemberAdminRead' 'shadow-pages/functions/v4/shadow/[[path]].ts'
+          grep -q 'getShadowAccess' 'shadow-pages/functions/v4/shadow/[[path]].ts'
+          grep -q 'enforceShadowRoute' 'shadow-pages/functions/v4/shadow/[[path]].ts'
 
       - name: Assemble Pages public directory
         run: |
@@ -101,7 +103,7 @@ jobs:
               if [ "$method" = "POST" ]; then
                 code=$(curl -sS -X POST -H 'content-type: application/json' -d '{}' -o "$body" -w '%{http_code}' "$url" || true)
               else
-                code=$(curl -sS -o "$body" -w '%{http_code}' "$url" || true)
+                code=$(curl -sS -L -o "$body" -w '%{http_code}' "$url" || true)
               fi
               echo "$label attempt=$attempt status=$code"
               if [ "$code" = "$expected" ] && grep -q "$marker" "$body"; then return 0; fi
@@ -118,6 +120,7 @@ jobs:
           wait_for "login" GET "$PREVIEW_URL/login" 200 'V4_010' /tmp/login.html
           wait_for "semantic shadow" GET "$PREVIEW_URL/semantic-review" 200 'V4_010C' /tmp/semantic.html
           wait_for "session unauthenticated" GET "$PREVIEW_URL/v4/shadow/session?organization_id=$ORG_ID" 401 'UNAUTHORIZED' /tmp/session.json
+          wait_for "members unauthenticated" GET "$PREVIEW_URL/v4/shadow/members?organization_id=$ORG_ID" 401 'UNAUTHORIZED' /tmp/members.json
           wait_for "overview unauthenticated" GET "$PREVIEW_URL/v4/shadow/overview?organization_id=$ORG_ID" 401 'UNAUTHORIZED' /tmp/overview.json
           wait_for "POST fail closed" POST "$PREVIEW_URL/v4/shadow/overview?organization_id=$ORG_ID" 405 'METHOD_NOT_ALLOWED' /tmp/post.json
 
@@ -128,6 +131,7 @@ jobs:
           echo "- Target Pages project: meicare-smart-pharmacy" >> "$GITHUB_STEP_SUMMARY"
           echo "- Isolated alias: $PREVIEW_URL" >> "$GITHUB_STEP_SUMMARY"
           echo "- V4_010C semantic acceptance page included" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Member-admin read routes use shared V4 RBAC/access layer" >> "$GITHUB_STEP_SUMMARY"
           echo "- Cloudflare credentials available: ${{ steps.cf.outputs.ready }}" >> "$GITHUB_STEP_SUMMARY"
           echo "- Normal production UI is not replaced" >> "$GITHUB_STEP_SUMMARY"
           echo "- frontend_v4_ready must remain false" >> "$GITHUB_STEP_SUMMARY"
