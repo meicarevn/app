@@ -1,6 +1,6 @@
 # V4_011C — Controlled Production Read-Path Canary
 
-Status: **ISOLATED PREVIEW DEPLOYED / AUTOMATED CANARY SMOKE PASS / AUTHENTICATED PARITY ACCEPTANCE PENDING**
+Status: **ISOLATED PREVIEW DEPLOYED / AUTOMATED CANARY PASS / AUTHENTICATED HUMAN PARITY ACCEPTANCE PASS**
 
 Tracking: #27
 
@@ -63,29 +63,32 @@ Result over the current 2,244 operational keys:
 - expected-wastage suppression mismatch = 0;
 - rows with any mismatch = 0.
 
-This is supporting evidence only. The Cloudflare canary still performs the comparison through the real authenticated application read path.
+This is supporting evidence only. The Cloudflare canary also performs the comparison through the real authenticated application read path.
 
 ## Automated isolated deployment — PASS
 
-Current branch head: `b738fdcdf4a93acff2180b9dd6b465e10a36dda4`.
+Current-head CI/deployment evidence before authenticated acceptance:
 
-GitHub Actions evidence:
+- V4_011C Controlled DB Read-path Canary run `34023673092`: SUCCESS;
+- V4 Shadow Read CI run `34023675466`: SUCCESS;
+- V4 Gateway CI run `34023675465`: SUCCESS.
 
-- V4_011C Controlled DB Read-path Canary run `34023560560`: SUCCESS;
-- V4 Shadow Read CI run `34023575380`: SUCCESS;
-- V4 Gateway CI run `34023575422`: SUCCESS.
+The V4_011C workflow passed dependency install, TypeScript typecheck, unit tests, browser JavaScript syntax checks, service-role/mutation guards, isolated Cloudflare Pages deployment, live canary page HTTP 200 smoke, unauthenticated endpoint HTTP 401 smoke, and POST fail-closed HTTP 405 smoke.
 
-The V4_011C workflow passed:
+## Authenticated human parity acceptance — PASS
 
-- dependency install;
-- TypeScript typecheck;
-- unit tests including exact-parity and fail-visible mismatch tests;
-- browser JavaScript syntax checks;
-- service-role / mutation static guards;
-- isolated Cloudflare Pages deployment;
-- live canary page HTTP 200 smoke;
-- unauthenticated canary endpoint HTTP 401 smoke;
-- POST fail-closed HTTP 405 smoke.
+On 2026-09-06, the authenticated operator tested the isolated V4_011C canary using the existing MEICARE account and explicitly returned **PASS** for the requested acceptance screen.
+
+Acceptance contract presented to the operator:
+
+- `V4_011C canary PASS`;
+- `EXACT PARITY`;
+- parity mismatch rows = 0;
+- missing DB rows = 0;
+- missing Cloudflare rows = 0;
+- unsafe recommendations = 0.
+
+No password or JWT was requested, copied into GitHub, or stored as acceptance evidence. This records the human browser acceptance only; it is not Founder A approval for a production routing change and does not authorize broader cutover.
 
 ## Current controlled acceptance reference
 
@@ -99,14 +102,14 @@ At the V4_011B production migration boundary:
 - recommendations without human-review flag = 0;
 - ledger drift = 0.
 
-The browser canary reports whether this snapshot still matches, but semantic parity is evaluated independently so legitimate future inventory changes do not get silently treated as code drift.
+The browser canary reports whether this snapshot still matches, while semantic parity is evaluated independently so legitimate future inventory changes do not get silently treated as code drift.
 
-## Production invariant after isolated preview deployment — PASS
+## Production invariant after authenticated acceptance — PASS
 
-Read-only verification after the Pages deployment confirms:
+A read-only verification immediately after recording the authenticated acceptance confirms:
 
-- additive projection still returns 2,244 rows;
-- inventory ledger drift = 0;
+- additive projection rows = 2,244;
+- inventory ledger drift rows = 0;
 - `cutover_stage = SHADOW`;
 - `inventory_write_mode = LEGACY`;
 - `alert_publish_mode = SHADOW`;
@@ -117,24 +120,11 @@ Read-only verification after the Pages deployment confirms:
 - `iot_gateway_ready = false`;
 - `ai_orchestrator_ready = false`.
 
-## Remaining acceptance
-
-Authenticated human acceptance is still required because CI intentionally does not possess or store a user's Supabase password/JWT.
-
-Using the existing MEICARE account, open the isolated canary page and confirm that it reports:
-
-- `V4_011C canary PASS`;
-- `EXACT PARITY`;
-- mismatch rows = 0;
-- missing DB = 0;
-- missing Cloudflare = 0;
-- unsafe recommendations = 0.
-
-Do not share the password or JWT in GitHub or ChatGPT.
+Therefore the V4_011C isolated read-path canary acceptance gate is complete without changing production routing or runtime modes.
 
 ## Release boundary
 
-This step does **not** authorize:
+This completed canary gate does **not** authorize:
 
 - changing the normal V4_011 Shadow endpoint to the DB path;
 - setting `frontend_v4_ready=true`;
@@ -143,4 +133,4 @@ This step does **not** authorize:
 - inventory-write cutover;
 - broader V4 PR merge.
 
-Promotion requires a separate gate after the isolated canary is green and authenticated human acceptance is recorded.
+The next step is a separate **V4_011D Controlled Read-Path Promotion** gate. Because a production read-path/routing change is an infrastructure and authorization-sensitive release action, V4_011D must remain proposal/review-only until Founder A explicitly approves the production promotion scope.
