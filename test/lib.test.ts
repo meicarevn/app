@@ -49,28 +49,47 @@ describe("gateway validation", () => {
     })).toThrowError(HttpError);
   });
 
-  it("validates IoT readings and preserves sequence identity", () => {
+  it("accepts the existing ESP device identity from X-Device-Id", () => {
     const reading = validateIotPayload({
-      device_uid: "ESP01S-001",
       sequence_number: 42,
       recorded_at: "2026-09-06T08:00:00+07:00",
       temperature: 25.5,
       humidity: 64,
       reading_kind: "heartbeat"
-    });
+    }, "ESP01S-001");
     expect(reading.deviceUid).toBe("ESP01S-001");
     expect(reading.sequenceNumber).toBe(42);
     expect(reading.readingKind).toBe("HEARTBEAT");
   });
 
-  it("rejects impossible humidity before it reaches the IoT engine", () => {
-    expect(() => validateIotPayload({
+  it("accepts device_uid in the body for forward compatibility", () => {
+    const reading = validateIotPayload({
       device_uid: "ESP01S-001",
       sequence_number: 43,
       recorded_at: "2026-09-06T08:00:00+07:00",
       temperature: 25,
+      humidity: 60
+    });
+    expect(reading.deviceUid).toBe("ESP01S-001");
+  });
+
+  it("rejects a body/header device identity mismatch", () => {
+    expect(() => validateIotPayload({
+      device_uid: "ESP01S-002",
+      sequence_number: 44,
+      recorded_at: "2026-09-06T08:00:00+07:00",
+      temperature: 25,
+      humidity: 60
+    }, "ESP01S-001")).toThrowError(HttpError);
+  });
+
+  it("rejects impossible humidity before it reaches the IoT engine", () => {
+    expect(() => validateIotPayload({
+      sequence_number: 45,
+      recorded_at: "2026-09-06T08:00:00+07:00",
+      temperature: 25,
       humidity: 101
-    })).toThrowError(HttpError);
+    }, "ESP01S-001")).toThrowError(HttpError);
   });
 
   it("rejects non-object JSON payloads", () => {
