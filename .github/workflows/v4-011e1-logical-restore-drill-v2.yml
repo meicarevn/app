@@ -136,33 +136,27 @@ jobs:
           set -euo pipefail
           WORK="$RUNNER_TEMP/v4-011e1"
 
-          # Platform-managed supabase_* and pg_* roles are not part of the MEICARE
-          # application recovery domain and are reserved by the self-hosted image.
-          # Preserve the original dump checksum, but omit only managed-role config
-          # when creating the portable rehearsal input.
-          grep -vE '"(supabase_|pg_)[A-Za-z0-9_]*"' "$WORK/roles.sql" > "$WORK/roles-portable.sql"
+          # Managed Supabase roles/schemas are supplied by the isolated Supabase image.
+          # They are a platform recovery domain, not MEICARE application data. Keep the
+          # original roles.sql checksum as evidence but do not replay managed role
+          # attributes into the target. Filter only managed-role ACL/ownership lines
+          # from the application schema for portability.
           awk '
             BEGIN { IGNORECASE=1 }
             /^(GRANT|REVOKE|ALTER DEFAULT PRIVILEGES|ALTER .* OWNER TO)/ && /"(supabase_|pg_)[A-Za-z0-9_]*"/ { next }
             { print }
           ' "$WORK/schema.sql" > "$WORK/schema-portable.sql"
 
-          psql "$RESTORE_DB_URL" -X -q -v ON_ERROR_STOP=1 <<'SQL'
-          DO $$ BEGIN CREATE ROLE anon NOLOGIN; EXCEPTION WHEN duplicate_object THEN NULL; END $$;
-          DO $$ BEGIN CREATE ROLE authenticated NOLOGIN; EXCEPTION WHEN duplicate_object THEN NULL; END $$;
-          DO $$ BEGIN CREATE ROLE service_role NOLOGIN BYPASSRLS; EXCEPTION WHEN duplicate_object THEN NULL; END $$;
-          CREATE SCHEMA IF NOT EXISTS auth;
-          CREATE TABLE IF NOT EXISTS auth.users (id uuid PRIMARY KEY, email text);
-          CREATE OR REPLACE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql STABLE AS $$
-            select nullif(coalesce(current_setting('request.jwt.claim.sub', true), current_setting('request.jwt.claims', true)::jsonb->>'sub'), '')::uuid
-          $$;
-          CREATE OR REPLACE FUNCTION auth.jwt() RETURNS jsonb LANGUAGE sql STABLE AS $$
-            select coalesce(nullif(current_setting('request.jwt.claims', true), ''), '{}')::jsonb
-          $$;
-          CREATE OR REPLACE FUNCTION auth.role() RETURNS text LANGUAGE sql STABLE AS $$
-            select auth.jwt()->>'role'
-          $$;
-          SQL
+          api_role_count=$(psql "$RESTORE_DB_URL" -X -q -A -t -v ON_ERROR_STOP=1 \
+            -c "select count(*) from pg_roles where rolname in ('anon','authenticated','service_role');")
+          test "$api_role_count" = "3"
+
+          auth_contract_count=$(psql "$RESTORE_DB_URL" -X -q -A -t -v ON_ERROR_STOP=1 \
+            -c "select count(*) from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='auth' and p.proname in ('uid','jwt');")
+          test "$auth_contract_count" -ge "2"
+
+          echo "portable_restore_managed_roles=reused_from_target" >> "$GITHUB_ENV"
+          echo "portable_restore_auth_contracts=$auth_contract_count" >> "$GITHUB_ENV"
 
       - name: Restore logical dump into isolated target
         id: restore
@@ -176,7 +170,6 @@ jobs:
           psql "$RESTORE_DB_URL" \
             --single-transaction \
             --variable ON_ERROR_STOP=1 \
-            --file "$WORK/roles-portable.sql" \
             --file "$WORK/schema-portable.sql" \
             --command 'SET session_replication_role = replica' \
             --file "$WORK/data.sql"
@@ -246,7 +239,7 @@ jobs:
           echo "- schema.sql bytes/SHA256: ${{ steps.dump.outputs.schema_bytes }} / ${{ steps.dump.outputs.schema_sha }}" >> "$GITHUB_STEP_SUMMARY"
           echo "- data.sql bytes/SHA256: ${{ steps.dump.outputs.data_bytes }} / ${{ steps.dump.outputs.data_sha }}" >> "$GITHUB_STEP_SUMMARY"
           echo "- OWNER / unauthorized / multi-axis rows: $owner_rls_rows / $denied_rls_rows / $multi_axis_rows" >> "$GITHUB_STEP_SUMMARY"
-          echo "- Platform-managed role configuration was excluded only from the isolated portable restore input; original dump checksums remain recorded." >> "$GITHUB_STEP_SUMMARY"
+          echo "- Managed API roles/auth contracts reused from isolated Supabase target; original role dump checksum remains recorded." >> "$GITHUB_STEP_SUMMARY"
           echo "- Raw dump files were never uploaded or committed." >> "$GITHUB_STEP_SUMMARY"
 
       - name: Secure cleanup
