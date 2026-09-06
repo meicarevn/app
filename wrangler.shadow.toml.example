@@ -1,0 +1,16 @@
+name = "meicare-v4-shadow-read"
+main = "src/shadow-worker.ts"
+compatibility_date = "2026-09-06"
+
+[vars]
+SUPABASE_URL = "https://YOUR_PROJECT.supabase.co"
+SHADOW_ALLOWED_ORIGIN = "https://YOUR_SHADOW_PAGES.pages.dev"
+
+# Configure as an encrypted secret:
+# SUPABASE_ANON_KEY
+#
+# Intentionally absent:
+# SUPABASE_SERVICE_ROLE_KEY
+# R2 bindings
+# Durable Objects
+# write/mutation secrets

@@ -1,0 +1,48 @@
+name: V4 Shadow Read CI
+
+on:
+  pull_request:
+    paths:
+      - "src/shadow.ts"
+      - "src/shadow-worker.ts"
+      - "web-shadow/**"
+      - "test/shadow.test.ts"
+      - "wrangler.shadow.toml.example"
+      - ".github/workflows/v4-009-shadow-ci.yml"
+  push:
+    branches:
+      - "v4-009-frontend-shadow"
+    paths:
+      - "src/shadow.ts"
+      - "src/shadow-worker.ts"
+      - "web-shadow/**"
+      - "test/shadow.test.ts"
+      - "wrangler.shadow.toml.example"
+      - ".github/workflows/v4-009-shadow-ci.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  shadow-checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Install dependencies
+        run: npm install --ignore-scripts --no-audit --no-fund
+      - name: Typecheck all Worker sources
+        run: npm run check
+      - name: Unit tests
+        run: npm test
+      - name: Shadow UI JavaScript syntax
+        run: node --check web-shadow/app.js
+      - name: Shadow Worker must remain read-only
+        run: |
+          if grep -Eq 'method:[[:space:]]*"(POST|PUT|PATCH|DELETE)"|SUPABASE_SERVICE_ROLE_KEY' src/shadow.ts src/shadow-worker.ts; then
+            echo "Shadow read layer contains a forbidden mutation/service-role marker"
+            exit 1
+          fi
