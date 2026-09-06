@@ -1,6 +1,6 @@
 # V4_011D — Controlled Shadow Read-Path Promotion Execution
 
-Status: **FOUNDER A APPROVED / CONTROLLED EXECUTION**
+Status: **FOUNDER A APPROVED / AUTOMATED EXECUTION PASS / AUTHENTICATED HUMAN ACCEPTANCE PENDING**
 
 Tracking: #33
 
@@ -54,19 +54,47 @@ The first deployment target is the existing isolated V4_011 Shadow alias:
 
 This is **not** a global production frontend cutover. The root production Pages site is not replaced by this execution. `frontend_v4_ready` remains false.
 
-## Automated acceptance
+## Automated acceptance — PASS
 
-The execution workflow must:
+Current execution head: `3b9fa41ffd8a038a2fe4a5e29f98cd81953f810f`.
 
-1. run typecheck and all unit tests;
-2. assert the normal V4_011 route contains `inventory_intelligence_multi_axis_v4_011` and no `projectMultiAxisRows(` call;
-3. assert no service-role marker or mutation method is present;
-4. assemble the existing Shadow Pages application;
-5. deploy only to branch alias `v4-011-multi-axis-preview`;
-6. verify `/multi-axis-review` returns HTTP 200;
-7. verify unauthenticated V4_011 GET returns HTTP 401;
-8. verify POST to V4_011 returns HTTP 405;
-9. leave authenticated semantic acceptance to a human session because CI never stores user passwords/JWTs.
+GitHub Actions evidence:
+
+- V4_011D Controlled Shadow Read-Path Promotion run `34030185500`: SUCCESS;
+- V4 Gateway CI run `34030187765`: SUCCESS;
+- 12 test files / 68 tests: PASS;
+- TypeScript typecheck: PASS;
+- browser JavaScript syntax: PASS;
+- execution safety guards: PASS.
+
+Cloudflare deployment:
+
+- immutable deployment: `https://e4e12b64.meicare-smart-pharmacy.pages.dev`;
+- controlled alias: `https://v4-011-multi-axis-preview.meicare-smart-pharmacy.pages.dev`;
+- global production frontend was explicitly not targeted.
+
+Live smoke passed:
+
+- `/multi-axis-review` HTTP 200;
+- unauthenticated promoted endpoint HTTP 401;
+- POST promoted endpoint HTTP 405;
+- `X-Meicare-Read-Path: V4_011D_DB_PROJECTION` propagated on promoted route responses.
+
+## Post-deploy production invariant — PASS
+
+Read-only production verification after deployment confirms:
+
+- projection rows = 2,244;
+- ledger drift rows = 0;
+- `cutover_stage=SHADOW`;
+- `inventory_write_mode=LEGACY`;
+- `alert_publish_mode=SHADOW`;
+- `his_ingestion_mode=HYBRID`;
+- `frontend_v4_ready=false`;
+- `integration_layer_ready=false`;
+- `r2_gateway_ready=false`;
+- `iot_gateway_ready=false`;
+- `ai_orchestrator_ready=false`.
 
 ## Rollback
 
@@ -80,15 +108,8 @@ Rollback is route-only and does not require a database migration:
 
 The additive V4_011B database projection remains in place because it is independently accepted and non-destructive.
 
-## Post-deploy production invariant
+## Remaining gate
 
-After deployment, re-check production database/runtime read-only. Required invariant:
+Authenticated human acceptance is still required. CI intentionally does not possess a user's password/JWT.
 
-- projection rows remain 2,244 at this accepted boundary;
-- ledger drift remains 0;
-- `cutover_stage=SHADOW`;
-- `inventory_write_mode=LEGACY`;
-- `alert_publish_mode=SHADOW`;
-- `his_ingestion_mode=HYBRID`;
-- `frontend_v4_ready=false`;
-- integration/R2/IoT/AI readiness flags remain false.
+The human acceptance should confirm that the normal V4_011 Shadow page still renders the accepted 2,244-key model, A1/B1 cohorts and drug/warehouse metadata without regression. PR #34 remains Draft/Open/Unmerged until that acceptance is recorded.
