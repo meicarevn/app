@@ -1,0 +1,130 @@
+name: V4_011D2 Controlled DB-backed Shadow Read Promotion
+
+on:
+  push:
+    branches:
+      - v4-011d2-db-read-promotion-exec
+    paths:
+      - "shadow-pages/functions/v4/shadow/intelligence-v4-011.ts"
+      - "src/intelligence-v4-011-db-read.ts"
+      - "test/intelligence-v4-011-db-read.test.ts"
+      - "docs/V4_011D*.md"
+      - ".github/workflows/v4-011d2-db-read-promotion.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  controlled-promote:
+    runs-on: ubuntu-latest
+    env:
+      PREVIEW_URL: https://v4-011-multi-axis-preview.meicare-smart-pharmacy.pages.dev
+      ORG_ID: 68d83220-4e5d-46e7-8bd3-7863205985f4
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Typecheck and unit tests
+        run: |
+          npm run check
+          npm test
+
+      - name: V4_011D2 approved-scope guards
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROUTE=shadow-pages/functions/v4/shadow/intelligence-v4-011.ts
+          grep -q 'inventory_intelligence_multi_axis_v4_011' "$ROUTE"
+          grep -q 'V4_011D2_DB_PROJECTION' "$ROUTE"
+          grep -q 'organization_scope' "$ROUTE"
+          grep -q 'METHOD_NOT_ALLOWED' "$ROUTE"
+          grep -q 'Founder A Approval Evidence' docs/V4_011D_FOUNDER_A_APPROVAL.md
+          if grep -q 'projectMultiAxisRows' "$ROUTE"; then
+            echo "Cloudflare projection call remains in promoted normal V4_011 route"
+            exit 1
+          fi
+          if grep -R -Eiq 'SUPABASE_SERVICE_ROLE_KEY|sb_secret_|service_role' "$ROUTE" src/intelligence-v4-011-db-read.ts; then
+            echo "Forbidden service credential marker found"
+            exit 1
+          fi
+          if grep -Eq 'method:[[:space:]]*"(POST|PUT|PATCH|DELETE)"' "$ROUTE"; then
+            echo "Mutation fetch found in promoted read route"
+            exit 1
+          fi
+          if find supabase/migrations -type f -newer docs/V4_011D_FOUNDER_A_APPROVAL.md 2>/dev/null | grep -q .; then
+            echo "Unexpected migration file introduced in execution boundary"
+            exit 1
+          fi
+
+      - name: Assemble Pages public directory
+        run: |
+          rm -rf shadow-pages/public
+          mkdir -p shadow-pages/public
+          cp -R web-shadow/. shadow-pages/public/
+
+      - name: Cloudflare credentials status
+        id: cf
+        env:
+          CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CF_ACCOUNT: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          if [ -n "$CF_TOKEN" ] && [ -n "$CF_ACCOUNT" ]; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "Cloudflare credentials missing"
+            exit 1
+          fi
+
+      - name: Deploy Founder A-approved read-path promotion to normal V4_011 Shadow alias
+        if: steps.cf.outputs.ready == 'true'
+        working-directory: shadow-pages
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: npx --yes wrangler@4 pages deploy public --project-name meicare-smart-pharmacy --branch v4-011-multi-axis-preview --commit-dirty=true
+
+      - name: Live promoted read-path smoke
+        if: steps.cf.outputs.ready == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          wait_for() {
+            local label="$1" method="$2" url="$3" expected="$4" marker="$5" body="$6"
+            for attempt in $(seq 1 12); do
+              if [ "$method" = "POST" ]; then
+                code=$(curl -sS -X POST -H 'content-type: application/json' -d '{}' -o "$body" -w '%{http_code}' "$url" || true)
+              else
+                code=$(curl -sS -L -o "$body" -w '%{http_code}' "$url" || true)
+              fi
+              echo "$label attempt=$attempt status=$code"
+              if [ "$code" = "$expected" ] && grep -q "$marker" "$body"; then return 0; fi
+              if [ "$attempt" = "12" ]; then
+                echo "$label failed; expected HTTP $expected and marker $marker"
+                cat "$body" || true
+                return 1
+              fi
+              sleep 5
+            done
+          }
+          wait_for "multi-axis page" GET "$PREVIEW_URL/multi-axis-review" 200 'V4_011' /tmp/multi.html
+          wait_for "promoted route unauthenticated" GET "$PREVIEW_URL/v4/shadow/intelligence-v4-011?organization_id=$ORG_ID" 401 'UNAUTHORIZED' /tmp/multi.json
+          wait_for "promoted route POST fail closed" POST "$PREVIEW_URL/v4/shadow/intelligence-v4-011?organization_id=$ORG_ID" 405 'METHOD_NOT_ALLOWED' /tmp/multi-post.json
+
+      - name: Promotion summary
+        if: always()
+        run: |
+          echo "### V4_011D2 Controlled DB-backed Shadow Read Promotion" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Founder A approval evidence recorded" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Normal V4_011 Shadow alias only; no production/main Pages deployment" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Primary read source: inventory_intelligence_multi_axis_v4_011" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Human JWT + inventory.view + ORGANIZATION scope + RLS preserved" >> "$GITHUB_STEP_SUMMARY"
+          echo "- No Supabase migration / no inventory or alert mutation" >> "$GITHUB_STEP_SUMMARY"
+          echo "- frontend_v4_ready remains false" >> "$GITHUB_STEP_SUMMARY"
