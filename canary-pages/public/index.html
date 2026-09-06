@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <meta name="robots" content="noindex,nofollow" />
+  <title>MEICARE · V4_009G Founder A Canary</title>
+  <style>
+    :root{font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color-scheme:light dark}body{margin:0;background:#f6f7f9;color:#15171a}.shell{max-width:920px;margin:auto;padding:24px}.bar{position:sticky;top:0;z-index:2;background:#fff;border-bottom:1px solid #ddd;padding:14px 20px;display:flex;justify-content:space-between;gap:12px;align-items:center}.badge{font-size:12px;font-weight:800;padding:7px 10px;border-radius:999px;background:#fff3cd;color:#664d03}.card{background:#fff;border:1px solid #dedede;border-radius:16px;padding:20px;margin:16px 0;box-shadow:0 1px 3px rgba(0,0,0,.04)}.grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}label{display:grid;gap:6px;font-weight:650}input,button{font:inherit;padding:11px 12px;border-radius:10px;border:1px solid #bbb}button{cursor:pointer;font-weight:750;background:#111;color:#fff}button.secondary{background:#fff;color:#111}.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}.status{padding:12px;border-radius:10px;background:#eef3ff;white-space:pre-wrap}.danger{background:#fff0f0;color:#8d1111}.ok{background:#edfff1;color:#135d26}.muted{color:#666;font-size:13px}table{width:100%;border-collapse:collapse}th,td{text-align:left;border-bottom:1px solid #eee;padding:10px 8px;font-size:14px}@media(max-width:700px){.grid{grid-template-columns:1fr}.shell{padding:14px}.bar{align-items:flex-start;flex-direction:column}}
+  </style>
+</head>
+<body>
+  <header class="bar"><div><strong>MEICARE</strong><div class="muted">V4_009G · Founder A controlled canary</div></div><span class="badge">CANARY · NOT PRODUCTION UI</span></header>
+  <main class="shell">
+    <section class="card">
+      <h1>Member Admin V4 acceptance</h1>
+      <p>Trang độc lập dành cho canary. Không chứa service-role key. Phiên đăng nhập chỉ giữ trong bộ nhớ tab và mọi write đi qua same-origin proxy tới <code>meicare-member-admin-v4</code>.</p>
+      <div id="status" class="status">Chưa đăng nhập.</div>
+    </section>
+    <section class="card" id="loginCard">
+      <h2>1. Đăng nhập Founder A</h2>
+      <form id="loginForm" class="grid">
+        <label>Email<input id="email" type="email" autocomplete="username" required></label>
+        <label>Mật khẩu<input id="password" type="password" autocomplete="current-password" required></label>
+        <div class="row"><button type="submit">Đăng nhập canary</button><button id="logout" class="secondary" type="button">Đăng xuất</button></div>
+      </form>
+      <p class="muted">Mật khẩu chỉ được POST trực tiếp tới Supabase Auth qua HTTPS; trang không log hoặc lưu mật khẩu.</p>
+    </section>
+    <section class="card" id="acceptanceCard" hidden>
+      <h2>2. Kiểm tra controlled routing</h2>
+      <div class="row"><button id="refresh" type="button">Làm mới quyền</button><button id="ownerProtection" type="button">Test OWNER protection (expected 409)</button></div>
+      <p class="muted">OWNER protection là test write fail-closed: yêu cầu tạm khóa chính OWNER hiện tại phải bị database từ chối; không được có mutation thành công.</p>
+      <div id="session" class="status"></div>
+    </section>
+    <section class="card" id="membersCard" hidden>
+      <h2>3. Thành viên hiện tại (read only)</h2>
+      <div style="overflow:auto"><table><thead><tr><th>Tên</th><th>Email</th><th>Status</th><th>Role legacy</th></tr></thead><tbody id="members"></tbody></table></div>
+    </section>
+  </main>
+  <script src="./app.js" defer></script>
+</body>
+</html>
