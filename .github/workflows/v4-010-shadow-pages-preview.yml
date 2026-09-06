@@ -116,7 +116,7 @@ jobs:
 
           wait_for "root" GET "$PREVIEW_URL/" 200 'SHADOW · READ ONLY' /tmp/root.html
           wait_for "login" GET "$PREVIEW_URL/login" 200 'V4_010' /tmp/login.html
-          wait_for "semantic shadow" GET "$PREVIEW_URL/semantic-review.html" 200 'V4_010C' /tmp/semantic.html
+          wait_for "semantic shadow" GET "$PREVIEW_URL/semantic-review" 200 'V4_010C' /tmp/semantic.html
           wait_for "session unauthenticated" GET "$PREVIEW_URL/v4/shadow/session?organization_id=$ORG_ID" 401 'UNAUTHORIZED' /tmp/session.json
           wait_for "overview unauthenticated" GET "$PREVIEW_URL/v4/shadow/overview?organization_id=$ORG_ID" 401 'UNAUTHORIZED' /tmp/overview.json
           wait_for "POST fail closed" POST "$PREVIEW_URL/v4/shadow/overview?organization_id=$ORG_ID" 405 'METHOD_NOT_ALLOWED' /tmp/post.json
