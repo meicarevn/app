@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="color-scheme" content="light dark" />
+  <meta name="robots" content="noindex,nofollow" />
+  <title>MEICARE Platform V4</title>
+  <link rel="stylesheet" href="./styles.css" />
+  <link rel="stylesheet" href="./role-ux.css" />
+  <link rel="stylesheet" href="./platform.css" />
+</head>
+<body>
+  <a class="skip-link" href="#content">Bỏ qua điều hướng</a>
+  <header class="topbar platform-topbar">
+    <div class="brand">
+      <div class="brand-mark" aria-hidden="true">M</div>
+      <div>
+        <strong>MEICARE</strong>
+        <span>Pharmacy Intelligence Platform · V4</span>
+      </div>
+    </div>
+    <div class="topbar-actions">
+      <span id="roleBadge" class="role-badge" hidden>ROLE</span>
+      <span class="shadow-badge platform-badge">MEICARE PLATFORM · V4</span>
+      <span class="platform-stage-badge">PRE-PRODUCTION · READ ONLY</span>
+      <a id="memberAdminLink" class="secondary-button" href="./member-admin" hidden>Thành viên</a>
+      <a class="secondary-button" href="./login">Đăng nhập</a>
+      <button id="connectionButton" class="secondary-button" type="button">Kết nối</button>
+    </div>
+  </header>
+
+  <div class="app-shell">
+    <nav class="sidebar" aria-label="Điều hướng MEICARE Platform V4">
+      <button class="nav-item active" data-view="overview" type="button">Tổng quan</button>
+      <button class="nav-item" data-view="inventory" type="button">Kho thông minh</button>
+      <button class="nav-item" data-view="actions" type="button">Action Center</button>
+      <button class="nav-item" data-view="reconciliations" type="button">Đối soát HIS</button>
+      <button class="nav-item" data-view="iot" type="button">IoT / GSP</button>
+      <button class="nav-item" data-view="documents" type="button">Tài liệu & Evidence</button>
+      <button class="nav-item" data-view="compare" type="button">So sánh V3 ↔ V4</button>
+      <button class="nav-item" data-view="readiness" type="button">Production Gate</button>
+    </nav>
+
+    <main class="content" id="content" tabindex="-1">
+      <section class="page-heading">
+        <div>
+          <p class="eyebrow">MEICARE Platform V4 · Controlled Read Layer</p>
+          <h1 id="pageTitle">Tổng quan vận hành</h1>
+          <p id="pageSubtitle">Frontend V4 riêng biệt, đọc dữ liệu qua Supabase RLS mà không thay đổi luồng production hiện tại.</p>
+          <div id="sessionContext" class="session-context" hidden></div>
+        </div>
+        <div class="page-actions">
+          <a class="secondary-button platform-review-link" href="./multi-axis-review">Multi-axis Review</a>
+          <button id="refreshButton" class="primary-button" type="button">Làm mới</button>
+        </div>
+      </section>
+
+      <section class="notice platform-notice">
+        <strong>V4 frontend độc lập.</strong>
+        <span>Trang này chạy trên Cloudflare Pages project <code>meicare-platform</code>. Frontend production hiện tại vẫn là rollback path; <code>frontend_v4_ready</code> chưa được bật.</span>
+      </section>
+
+      <section id="connectionNotice" class="notice warning" hidden>
+        <strong>Chưa cấu hình kết nối.</strong>
+        <span>Dùng “Đăng nhập” để xác thực bằng tài khoản Supabase hiện tại; không nhập service-role key.</span>
+      </section>
+
+      <section id="scopeNotice" class="notice warning" hidden>
+        <strong>Role có phạm vi giới hạn.</strong>
+        <span>V4 UI hiển thị quyền phiên làm việc; Supabase RLS vẫn là authority cuối cùng.</span>
+      </section>
+      <section id="errorNotice" class="notice error" hidden></section>
+      <section id="loading" class="loading" hidden aria-live="polite">Đang tải dữ liệu V4…</section>
+      <section id="viewRoot" aria-live="polite"></section>
+    </main>
+  </div>
+
+  <dialog id="connectionDialog">
+    <form method="dialog" id="connectionForm">
+      <div class="dialog-heading">
+        <div>
+          <p class="eyebrow">MEICARE Platform connection</p>
+          <h2>Kết nối V4 read gateway</h2>
+        </div>
+        <button class="icon-button" value="cancel" aria-label="Đóng" type="submit">×</button>
+      </div>
+      <p class="muted">Thông tin chỉ được giữ trong <code>sessionStorage</code> của tab này. Không dùng service-role key.</p>
+      <label>
+        Gateway URL
+        <input id="gatewayInput" name="gateway" type="url" placeholder="https://meicare-platform.pages.dev" autocomplete="off" required />
+      </label>
+      <label>
+        Organization ID
+        <input id="orgInput" name="organization" type="text" placeholder="UUID" autocomplete="off" required />
+      </label>
+      <label>
+        Supabase access token
+        <textarea id="tokenInput" name="token" rows="4" placeholder="eyJ…" autocomplete="off" required></textarea>
+      </label>
+      <div class="dialog-actions">
+        <button class="secondary-button" value="cancel" type="submit">Huỷ</button>
+        <button id="saveConnectionButton" class="primary-button" value="default" type="button">Lưu phiên</button>
+      </div>
+    </form>
+  </dialog>
+
+  <template id="emptyTemplate">
+    <div class="empty-state">
+      <strong>Chưa có dữ liệu phù hợp</strong>
+      <span>MEICARE Platform V4 không tự tạo dữ liệu mẫu.</span>
+    </div>
+  </template>
+
+  <script src="./app.js" defer></script>
+  <script src="./role-ux.js" defer></script>
+</body>
+</html>
