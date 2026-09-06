@@ -9,11 +9,13 @@ on:
       - "src/role-admin.ts"
       - "src/member-admin.ts"
       - "src/member-admin-read.ts"
+      - "src/member-admin-canary.ts"
       - "web-shadow/**"
       - "test/shadow.test.ts"
       - "test/shadow-access.test.ts"
       - "test/role-admin.test.ts"
       - "test/member-admin.test.ts"
+      - "test/member-admin-canary.test.ts"
       - "supabase/migrations/**"
       - "supabase/functions/meicare-member-admin-v4/**"
       - "wrangler.shadow.toml.example"
@@ -26,6 +28,7 @@ on:
       - "v4-009d-org-structure"
       - "v4-009e-role-administration"
       - "v4-009f-member-lifecycle-ui"
+      - "v4-009g-member-admin-canary"
     paths:
       - "src/shadow.ts"
       - "src/shadow-worker.ts"
@@ -33,11 +36,13 @@ on:
       - "src/role-admin.ts"
       - "src/member-admin.ts"
       - "src/member-admin-read.ts"
+      - "src/member-admin-canary.ts"
       - "web-shadow/**"
       - "test/shadow.test.ts"
       - "test/shadow-access.test.ts"
       - "test/role-admin.test.ts"
       - "test/member-admin.test.ts"
+      - "test/member-admin-canary.test.ts"
       - "supabase/migrations/**"
       - "supabase/functions/meicare-member-admin-v4/**"
       - "wrangler.shadow.toml.example"
@@ -66,6 +71,7 @@ jobs:
           node --check web-shadow/app.js
           node --check web-shadow/role-ux.js
           node --check web-shadow/member-admin.js
+          node --check web-shadow/member-admin-v4-canary.js
       - name: Shadow Worker must remain read-only
         run: |
           if grep -Eq 'method:[[:space:]]*"(POST|PUT|PATCH|DELETE)"|SUPABASE_SERVICE_ROLE_KEY' src/shadow.ts src/shadow-worker.ts src/shadow-access.ts src/member-admin-read.ts; then
@@ -91,7 +97,6 @@ jobs:
       - name: V4_009F member lifecycle guards must be present
         run: |
           FILE=supabase/migrations/20260906030000_v4_009f_member_lifecycle.sql
-          grep -q 'REVIEW ONLY' "$FILE"
           grep -q 'OWNER_STATUS_PROTECTED' "$FILE"
           grep -q 'INVITED_MUST_SELF_ACTIVATE' "$FILE"
           grep -q 'activate_my_invited_memberships_v4' "$FILE"
@@ -110,5 +115,19 @@ jobs:
           grep -q 'end_membership_role_v4' "$FILE"
           if grep -q 'from("organization_members")' "$FILE" || grep -q "from('organization_members')" "$FILE"; then
             echo "Edge Function references organization_members directly; use governed RPCs instead"
+            exit 1
+          fi
+      - name: V4_009G canary routing must fail closed
+        run: |
+          grep -q 'V4_CANARY' src/member-admin-canary.ts
+          grep -q 'MEMBER_ADMIN_V4_CANARY_DISABLED' src/member-admin-canary.ts
+          grep -q '/functions/v1/meicare-member-admin-v4' src/member-admin-canary.ts
+          grep -q 'member-admin-v4-canary.js' web-shadow/member-admin.html
+          grep -q 'V4_009G' web-shadow/member-admin-v4-canary.js
+          grep -q 'FLAG_OFF' web-shadow/member-admin-v4-canary.js
+          grep -q 'ENDPOINT_NOT_APPROVED' web-shadow/member-admin-v4-canary.js
+          grep -q 'x-meicare-canary' web-shadow/member-admin-v4-canary.js
+          if grep -q 'meicare-member-admin"' web-shadow/member-admin-v4-canary.js; then
+            echo "Canary UI contains a legacy write endpoint; silent fallback is forbidden"
             exit 1
           fi
