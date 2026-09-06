@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="color-scheme" content="light dark" />
+  <meta name="robots" content="noindex,nofollow" />
+  <title>MEICARE · V4_011C Read-path Canary</title>
+  <link rel="stylesheet" href="./styles.css" />
+  <link rel="stylesheet" href="./role-ux.css" />
+  <link rel="stylesheet" href="./multi-axis-review.css" />
+</head>
+<body>
+  <a class="skip-link" href="#content">Bỏ qua điều hướng</a>
+  <header class="topbar">
+    <div class="brand">
+      <div class="brand-mark" aria-hidden="true">M</div>
+      <div><strong>MEICARE</strong><span>V4_011C Controlled Read-path Canary</span></div>
+    </div>
+    <div class="topbar-actions">
+      <span class="shadow-badge">SHADOW CANARY · READ ONLY</span>
+      <a class="secondary-button" href="./multi-axis-review.html">← V4_011 Shadow</a>
+    </div>
+  </header>
+
+  <main class="multi-shell" id="content" tabindex="-1">
+    <section class="page-heading">
+      <div>
+        <p class="eyebrow">V4_011C · DB READ-PATH CANARY</p>
+        <h1>Đọc trực tiếp database projection và kiểm tra parity</h1>
+        <p>Primary path đọc từ <code>inventory_intelligence_multi_axis_v4_011</code>. Cloudflare projection cũ chỉ được chạy song song để so sánh. Không thay đổi production routing.</p>
+      </div>
+      <button id="refreshButton" class="primary-button" type="button">Làm mới</button>
+    </section>
+
+    <section id="statusBox" class="multi-status">Đang chờ chạy controlled canary…</section>
+    <section id="metrics" class="metrics-grid multi-metrics"></section>
+
+    <section class="panel">
+      <div class="panel-header">
+        <div>
+          <h2>Read-path parity</h2>
+          <p>Bất kỳ mismatch nào cũng phải được hiển thị, không normalize hoặc che giấu.</p>
+        </div>
+      </div>
+      <div class="panel-body" id="parityRoot"></div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-header">
+        <div>
+          <h2>Database projection sample</h2>
+          <p>Dữ liệu bên dưới đến trực tiếp từ additive production view qua human JWT + RLS.</p>
+        </div>
+      </div>
+      <div class="panel-body" id="rowsRoot"></div>
+    </section>
+  </main>
+
+  <script src="./multi-axis-canary.js" defer></script>
+</body>
+</html>
