@@ -1,0 +1,124 @@
+name: V4_010 Full Shadow Pages Preview
+
+on:
+  push:
+    branches:
+      - v4-010-full-shadow-preview
+    paths:
+      - "web-shadow/**"
+      - "shadow-pages/**"
+      - "src/shadow.ts"
+      - "src/lib.ts"
+      - "docs/V4_010_*.md"
+      - ".github/workflows/v4-010-shadow-pages-preview.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate-deploy-smoke:
+    runs-on: ubuntu-latest
+    env:
+      PREVIEW_URL: https://v4-010-shadow-preview.meicare-smart-pharmacy.pages.dev
+      ORG_ID: 68d83220-4e5d-46e7-8bd3-7863205985f4
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Existing worker typecheck and unit tests
+        run: |
+          npm run check
+          npm test
+
+      - name: Preview JavaScript syntax
+        run: |
+          node --check web-shadow/app.js
+          node --check web-shadow/role-ux.js
+          node --check web-shadow/login.js
+
+      - name: Static preview security guards
+        shell: bash
+        run: |
+          set -euo pipefail
+          if grep -R -Eiq 'SUPABASE_SERVICE_ROLE_KEY|sb_secret_|service_role' web-shadow shadow-pages/functions; then
+            echo "Forbidden service credential marker found in V4_010 preview source"
+            exit 1
+          fi
+          grep -q 'SHADOW · READ ONLY' web-shadow/index.html
+          grep -q 'METHOD_NOT_ALLOWED' 'shadow-pages/functions/v4/shadow/[[path]].ts'
+          grep -q 'SHADOW_PERMISSION_DENIED' 'shadow-pages/functions/v4/shadow/[[path]].ts'
+          grep -q 'SHADOW_SCOPE_DENIED' 'shadow-pages/functions/v4/shadow/[[path]].ts'
+          grep -q 'membership_effective_roles_v4' 'shadow-pages/functions/v4/shadow/[[path]].ts'
+
+      - name: Assemble Pages public directory
+        run: |
+          rm -rf shadow-pages/public
+          mkdir -p shadow-pages/public
+          cp -R web-shadow/. shadow-pages/public/
+
+      - name: Cloudflare credentials status
+        id: cf
+        env:
+          CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CF_ACCOUNT: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          if [ -n "$CF_TOKEN" ] && [ -n "$CF_ACCOUNT" ]; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "Cloudflare credentials missing."
+          fi
+
+      - name: Deploy isolated full Shadow preview
+        if: steps.cf.outputs.ready == 'true'
+        working-directory: shadow-pages
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: npx --yes wrangler@4 pages deploy public --project-name meicare-smart-pharmacy --branch v4-010-shadow-preview --commit-dirty=true
+
+      - name: Live preview read-only smoke
+        if: steps.cf.outputs.ready == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          for attempt in $(seq 1 12); do
+            code=$(curl -sS -o /tmp/root.html -w '%{http_code}' "$PREVIEW_URL/" || true)
+            if [ "$code" = "200" ] && grep -q 'SHADOW · READ ONLY' /tmp/root.html; then break; fi
+            if [ "$attempt" = "12" ]; then echo "Preview root did not become ready"; exit 1; fi
+            sleep 5
+          done
+
+          code=$(curl -sS -o /tmp/login.html -w '%{http_code}' "$PREVIEW_URL/login.html")
+          test "$code" = "200"
+          grep -q 'V4_010' /tmp/login.html
+
+          code=$(curl -sS -o /tmp/session.json -w '%{http_code}' "$PREVIEW_URL/v4/shadow/session?organization_id=$ORG_ID")
+          test "$code" = "401"
+          grep -q 'UNAUTHORIZED' /tmp/session.json
+
+          code=$(curl -sS -o /tmp/overview.json -w '%{http_code}' "$PREVIEW_URL/v4/shadow/overview?organization_id=$ORG_ID")
+          test "$code" = "401"
+          grep -q 'UNAUTHORIZED' /tmp/overview.json
+
+          code=$(curl -sS -X POST -H 'content-type: application/json' -d '{}' -o /tmp/post.json -w '%{http_code}' "$PREVIEW_URL/v4/shadow/overview?organization_id=$ORG_ID")
+          test "$code" = "405"
+          grep -q 'METHOD_NOT_ALLOWED' /tmp/post.json
+
+      - name: Preview deployment summary
+        if: always()
+        run: |
+          echo "### V4_010 Full Shadow Preview" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Target Pages project: meicare-smart-pharmacy" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Isolated alias: $PREVIEW_URL" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Cloudflare credentials available: ${{ steps.cf.outputs.ready }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Normal production UI is not replaced" >> "$GITHUB_STEP_SUMMARY"
+          echo "- frontend_v4_ready must remain false" >> "$GITHUB_STEP_SUMMARY"
