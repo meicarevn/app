@@ -56,22 +56,22 @@ This is **not** a global production frontend cutover. The root production Pages 
 
 ## Automated acceptance — PASS
 
-Current execution head: `3b9fa41ffd8a038a2fe4a5e29f98cd81953f810f`.
+Current execution head: `af9f573a2d84f89de64e922adeac238c692ab606`.
 
 GitHub Actions evidence:
 
-- V4_011D Controlled Shadow Read-Path Promotion run `34030185500`: SUCCESS;
-- V4 Gateway CI run `34030187765`: SUCCESS;
+- previous semantic-route execution run `34030185500`: SUCCESS;
+- current-head V4_011D execution run `34030324923`: SUCCESS;
+- current-head V4 Gateway CI run `34030327002`: SUCCESS;
 - 12 test files / 68 tests: PASS;
 - TypeScript typecheck: PASS;
 - browser JavaScript syntax: PASS;
 - execution safety guards: PASS.
 
-Cloudflare deployment:
+Cloudflare deployment remains targeted only to:
 
-- immutable deployment: `https://e4e12b64.meicare-smart-pharmacy.pages.dev`;
 - controlled alias: `https://v4-011-multi-axis-preview.meicare-smart-pharmacy.pages.dev`;
-- global production frontend was explicitly not targeted.
+- global production frontend is explicitly not targeted.
 
 Live smoke passed:
 
@@ -82,7 +82,7 @@ Live smoke passed:
 
 ## Post-deploy production invariant — PASS
 
-Read-only production verification after deployment confirms:
+Read-only production verification after the current-head deployment confirms:
 
 - projection rows = 2,244;
 - ledger drift rows = 0;
