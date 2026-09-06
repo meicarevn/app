@@ -56,13 +56,12 @@ This is **not** a global production frontend cutover. The root production Pages 
 
 ## Automated acceptance — PASS
 
-Current execution head: `af9f573a2d84f89de64e922adeac238c692ab606`.
+Current execution head: `3af60786fb4027f60e73072799d52833c28ba299`.
 
 GitHub Actions evidence:
 
-- previous semantic-route execution run `34030185500`: SUCCESS;
-- current-head V4_011D execution run `34030324923`: SUCCESS;
-- current-head V4 Gateway CI run `34030327002`: SUCCESS;
+- current-head V4_011D execution run `34030387236`: SUCCESS;
+- current-head V4 Gateway CI run `34030388434`: SUCCESS;
 - 12 test files / 68 tests: PASS;
 - TypeScript typecheck: PASS;
 - browser JavaScript syntax: PASS;
