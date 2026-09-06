@@ -1,0 +1,159 @@
+name: V4_011D Controlled Shadow Read-Path Promotion
+
+on:
+  push:
+    branches:
+      - v4-011d-read-path-promotion-exec
+    paths:
+      - "shadow-pages/functions/v4/shadow/intelligence-v4-011.ts"
+      - "test/v4-011d-exec-route.test.ts"
+      - "docs/V4_011D_CONTROLLED_READ_PATH_EXECUTION.md"
+      - ".github/workflows/v4-011d-exec-read-path-promotion.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate-deploy-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      SHADOW_URL: https://v4-011-multi-axis-preview.meicare-smart-pharmacy.pages.dev
+      GLOBAL_PRODUCTION_URL: https://meicare-smart-pharmacy.pages.dev
+      ORG_ID: 68d83220-4e5d-46e7-8bd3-7863205985f4
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Typecheck and unit tests
+        run: |
+          npm run check
+          npm test
+
+      - name: Browser JavaScript syntax
+        run: |
+          node --check web-shadow/app.js
+          node --check web-shadow/login.js
+          node --check web-shadow/multi-axis-review.js
+
+      - name: V4_011D execution safety guards
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROUTE=shadow-pages/functions/v4/shadow/intelligence-v4-011.ts
+
+          grep -q 'inventory_intelligence_multi_axis_v4_011' "$ROUTE"
+          grep -q 'V4_011D_DB_PROJECTION' "$ROUTE"
+          grep -q 'inventory.view' "$ROUTE"
+          grep -q 'organization_scope' "$ROUTE"
+          grep -q 'METHOD_NOT_ALLOWED' "$ROUTE"
+          grep -q 'approved_semantic_cohort' "$ROUTE"
+          grep -q 'human_review_recommendations' "$ROUTE"
+          grep -q 'drugs' "$ROUTE"
+          grep -q 'warehouses' "$ROUTE"
+
+          if grep -q 'projectMultiAxisRows(' "$ROUTE"; then
+            echo 'Legacy Cloudflare semantic projector is still active in promoted route'
+            exit 1
+          fi
+
+          if grep -Eiq 'SUPABASE_SERVICE_ROLE_KEY|sb_secret_|service_role' "$ROUTE"; then
+            echo 'Forbidden service-role marker found in promoted route'
+            exit 1
+          fi
+
+          if grep -Eq 'method:[[:space:]]*"(POST|PUT|PATCH|DELETE)"' "$ROUTE"; then
+            echo 'Mutation fetch found in promoted route'
+            exit 1
+          fi
+
+          if grep -R -Eiq 'frontend_v4_ready[[:space:]]*=[[:space:]]*true|alert_publish_mode[[:space:]]*=[[:space:]]*[^S]*|inventory_write_mode[[:space:]]*=[[:space:]]*[^L]*' \
+            docs/V4_011D_CONTROLLED_READ_PATH_EXECUTION.md "$ROUTE"; then
+            echo 'Unexpected readiness/runtime promotion marker found'
+            exit 1
+          fi
+
+      - name: Assemble Pages public directory
+        run: |
+          rm -rf shadow-pages/public
+          mkdir -p shadow-pages/public
+          cp -R web-shadow/. shadow-pages/public/
+
+      - name: Cloudflare credentials status
+        id: cf
+        env:
+          CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CF_ACCOUNT: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          if [ -n "$CF_TOKEN" ] && [ -n "$CF_ACCOUNT" ]; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "Cloudflare credentials missing."
+            exit 1
+          fi
+
+      - name: Deploy promoted read path to isolated V4_011 Shadow alias
+        working-directory: shadow-pages
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: npx --yes wrangler@4 pages deploy public --project-name meicare-smart-pharmacy --branch v4-011-multi-axis-preview --commit-dirty=true
+
+      - name: Live promoted-route fail-closed smoke
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          wait_for() {
+            local label="$1" method="$2" url="$3" expected="$4" marker="$5" body="$6" headers="$7"
+            for attempt in $(seq 1 12); do
+              if [ "$method" = "POST" ]; then
+                code=$(curl -sS -D "$headers" -X POST -H 'content-type: application/json' -d '{}' -o "$body" -w '%{http_code}' "$url" || true)
+              else
+                code=$(curl -sS -L -D "$headers" -o "$body" -w '%{http_code}' "$url" || true)
+              fi
+              echo "$label attempt=$attempt status=$code"
+              if [ "$code" = "$expected" ] && grep -q "$marker" "$body"; then return 0; fi
+              if [ "$attempt" = "12" ]; then
+                echo "$label failed; expected HTTP $expected and marker $marker"
+                cat "$body" || true
+                cat "$headers" || true
+                return 1
+              fi
+              sleep 5
+            done
+          }
+
+          wait_for "multi-axis page" GET "$SHADOW_URL/multi-axis-review" 200 'V4_011' /tmp/page.html /tmp/page.headers
+          wait_for "promoted route unauthenticated" GET "$SHADOW_URL/v4/shadow/intelligence-v4-011?organization_id=$ORG_ID" 401 'UNAUTHORIZED' /tmp/get.json /tmp/get.headers
+          grep -qi '^x-meicare-read-path: V4_011D_DB_PROJECTION' /tmp/get.headers
+          wait_for "promoted route POST fail closed" POST "$SHADOW_URL/v4/shadow/intelligence-v4-011?organization_id=$ORG_ID" 405 'METHOD_NOT_ALLOWED' /tmp/post.json /tmp/post.headers
+          grep -qi '^x-meicare-read-path: V4_011D_DB_PROJECTION' /tmp/post.headers
+
+      - name: Confirm deployment target is not global production branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$SHADOW_URL" != "$GLOBAL_PRODUCTION_URL"
+          echo "Controlled promotion target: $SHADOW_URL"
+          echo "Global production frontend untouched: $GLOBAL_PRODUCTION_URL"
+
+      - name: Execution summary
+        if: always()
+        run: |
+          echo "### V4_011D Controlled Shadow Read-Path Promotion" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Founder A approval: recorded in parent gate evidence" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Semantic source: public.inventory_intelligence_multi_axis_v4_011" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Target: $SHADOW_URL" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Global production frontend: not deployed by this workflow" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Human JWT + inventory.view + ORGANIZATION scope + RLS preserved" >> "$GITHUB_STEP_SUMMARY"
+          echo "- GET only; no service role; no mutation" >> "$GITHUB_STEP_SUMMARY"
+          echo "- frontend_v4_ready remains false" >> "$GITHUB_STEP_SUMMARY"
