@@ -137,15 +137,61 @@ jobs:
           WORK="$RUNNER_TEMP/v4-011e1"
 
           # Managed Supabase roles/schemas are supplied by the isolated Supabase image.
-          # They are a platform recovery domain, not MEICARE application data. Keep the
-          # original roles.sql checksum as evidence but do not replay managed role
-          # attributes into the target. Filter only managed-role ACL/ownership lines
-          # from the application schema for portability.
+          # Preserve hashes of the original dumps as evidence, but restore only the
+          # application domain into the disposable target.
           awk '
             BEGIN { IGNORECASE=1 }
             /^(GRANT|REVOKE|ALTER DEFAULT PRIVILEGES|ALTER .* OWNER TO)/ && /"(supabase_|pg_)[A-Za-z0-9_]*"/ { next }
             { print }
           ' "$WORK/schema.sql" > "$WORK/schema-portable.sql"
+
+          python3 - "$WORK/data.sql" "$WORK/data-portable.sql" "$WORK/managed-data-filter.json" <<'PY'
+          import json, re, sys
+
+          src, dst, report = sys.argv[1:]
+          managed = {
+              'auth', 'storage', 'realtime', '_realtime', 'supabase_functions',
+              'graphql', 'graphql_public', 'vault', 'extensions', 'cron', 'net'
+          }
+          copy_re = re.compile(r'^COPY\s+(?:"([^\"]+)"|([^\.\s]+))\.', re.I)
+          setval_re = re.compile(r"setval\('(?:\"?([^\"\.']+)\"?)\.", re.I)
+          skipped_copy = 0
+          skipped_statement = 0
+          skipping_copy = False
+
+          with open(src, encoding='utf-8') as inp, open(dst, 'w', encoding='utf-8') as out:
+              for line in inp:
+                  if skipping_copy:
+                      if line.rstrip('\n') == r'\.':
+                          skipping_copy = False
+                      continue
+
+                  m = copy_re.match(line)
+                  if m:
+                      schema = (m.group(1) or m.group(2) or '').lower()
+                      if schema in managed:
+                          skipped_copy += 1
+                          skipping_copy = True
+                          continue
+
+                  m = setval_re.search(line)
+                  if m and m.group(1).lower() in managed:
+                      skipped_statement += 1
+                      continue
+
+                  out.write(line)
+
+          with open(report, 'w', encoding='utf-8') as f:
+              json.dump({
+                  'managed_copy_sections_excluded': skipped_copy,
+                  'managed_sequence_statements_excluded': skipped_statement
+              }, f)
+          PY
+
+          jq -e . "$WORK/managed-data-filter.json" >/dev/null
+          managed_copy_sections=$(jq -r '.managed_copy_sections_excluded' "$WORK/managed-data-filter.json")
+          echo "managed_copy_sections_excluded=$managed_copy_sections"
+          test "$managed_copy_sections" -ge "1"
 
           api_role_count=$(psql "$RESTORE_DB_URL" -X -q -A -t -v ON_ERROR_STOP=1 \
             -c "select count(*) from pg_roles where rolname in ('anon','authenticated','service_role');")
@@ -159,6 +205,7 @@ jobs:
 
           echo "portable_restore_managed_roles=reused_from_target" >> "$GITHUB_ENV"
           echo "portable_restore_auth_contracts=$auth_contract_count" >> "$GITHUB_ENV"
+          echo "portable_restore_managed_copy_sections=$managed_copy_sections" >> "$GITHUB_ENV"
 
       - name: Restore logical dump into isolated target
         id: restore
@@ -174,7 +221,7 @@ jobs:
             --variable ON_ERROR_STOP=1 \
             --file "$WORK/schema-portable.sql" \
             --command 'SET session_replication_role = replica' \
-            --file "$WORK/data.sql"
+            --file "$WORK/data-portable.sql"
           echo "restore_seconds=$(($(date +%s)-restore_started))" >> "$GITHUB_OUTPUT"
 
       - name: Compare restored application state
@@ -240,8 +287,9 @@ jobs:
           echo "- roles.sql bytes/SHA256: ${{ steps.dump.outputs.roles_bytes }} / ${{ steps.dump.outputs.roles_sha }}" >> "$GITHUB_STEP_SUMMARY"
           echo "- schema.sql bytes/SHA256: ${{ steps.dump.outputs.schema_bytes }} / ${{ steps.dump.outputs.schema_sha }}" >> "$GITHUB_STEP_SUMMARY"
           echo "- data.sql bytes/SHA256: ${{ steps.dump.outputs.data_bytes }} / ${{ steps.dump.outputs.data_sha }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Managed COPY sections excluded from application restore: $portable_restore_managed_copy_sections" >> "$GITHUB_STEP_SUMMARY"
           echo "- OWNER / unauthorized / multi-axis rows: $owner_rls_rows / $denied_rls_rows / $multi_axis_rows" >> "$GITHUB_STEP_SUMMARY"
-          echo "- Managed API roles/auth contracts reused from isolated Supabase target; original role dump checksum remains recorded." >> "$GITHUB_STEP_SUMMARY"
+          echo "- Managed API roles/auth contracts reused from isolated Supabase target; original role/data dump checksums remain recorded." >> "$GITHUB_STEP_SUMMARY"
           echo "- Raw dump files were never uploaded or committed." >> "$GITHUB_STEP_SUMMARY"
 
       - name: Secure cleanup
