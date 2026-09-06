@@ -154,17 +154,11 @@ Deno.serve(async (request: Request) => {
           code: registrationError.code,
         });
         const { error: cleanupError } = await admin.auth.admin.deleteUser(invited.user.id);
-        if (cleanupError) {
-          console.error("Auth invite compensation failed", { requestId, code: cleanupError.code });
-        }
+        if (cleanupError) console.error("Auth invite compensation failed", { requestId, code: cleanupError.code });
         return response(request, { error: "MEMBERSHIP_REGISTRATION_FAILED", request_id: requestId }, 409);
       }
 
-      return response(request, {
-        status: "INVITED",
-        registration,
-        request_id: requestId,
-      }, 201);
+      return response(request, { status: "INVITED", registration, request_id: requestId }, 201);
     }
 
     if (action === "set_status") {
@@ -186,6 +180,50 @@ Deno.serve(async (request: Request) => {
         return response(request, { error: "MEMBER_STATUS_UPDATE_FAILED", request_id: requestId }, 409);
       }
       return response(request, { result: data, request_id: requestId });
+    }
+
+    if (action === "assign_role") {
+      const membershipId = cleanText(payload.membership_id, 64);
+      const roleCode = cleanText(payload.role_code, 64).toUpperCase();
+      const reason = cleanText(payload.reason, 1000);
+      const { scopeType, scopeId } = normalizeScope(payload);
+      if (!membershipId || !roleCode || !reason) {
+        return response(request, { error: "ROLE_ASSIGNMENT_INPUT_INVALID", request_id: requestId }, 422);
+      }
+      const { data, error } = await userClient.rpc("assign_membership_role_v4", {
+        p_organization_id: organizationId,
+        p_membership_id: membershipId,
+        p_role_code: roleCode,
+        p_scope_type: scopeType,
+        p_scope_id: scopeId,
+        p_valid_from: null,
+        p_valid_to: null,
+        p_reason: reason,
+      });
+      if (error) {
+        console.warn("Role assignment rejected", { requestId, code: error.code });
+        return response(request, { error: "ROLE_ASSIGNMENT_FAILED", request_id: requestId }, 409);
+      }
+      return response(request, { assignment_id: data, request_id: requestId }, 201);
+    }
+
+    if (action === "end_role") {
+      const assignmentId = cleanText(payload.assignment_id, 64);
+      const reason = cleanText(payload.reason, 1000);
+      if (!assignmentId || !reason) {
+        return response(request, { error: "ROLE_END_INPUT_INVALID", request_id: requestId }, 422);
+      }
+      const { data, error } = await userClient.rpc("end_membership_role_v4", {
+        p_organization_id: organizationId,
+        p_assignment_id: assignmentId,
+        p_end_at: null,
+        p_reason: reason,
+      });
+      if (error) {
+        console.warn("Role ending rejected", { requestId, code: error.code });
+        return response(request, { error: "ROLE_END_FAILED", request_id: requestId }, 409);
+      }
+      return response(request, { assignment_id: data, request_id: requestId });
     }
 
     return response(request, { error: "ACTION_INVALID", request_id: requestId }, 422);
