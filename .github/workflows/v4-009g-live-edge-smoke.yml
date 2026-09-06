@@ -1,0 +1,71 @@
+name: V4_009G Live Edge Smoke
+
+on:
+  push:
+    branches:
+      - "v4-009g-member-admin-canary"
+    paths:
+      - ".github/workflows/v4-009g-live-edge-smoke.yml"
+      - "supabase/functions/meicare-member-admin-v4/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  public-edge-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      EDGE_URL: https://sgxufmcsnveyyddazwuk.supabase.co/functions/v1/meicare-member-admin-v4
+      ALLOWED_ORIGIN: https://meicare-smart-pharmacy.pages.dev
+    steps:
+      - name: Allowed-origin CORS preflight
+        shell: bash
+        run: |
+          set -euo pipefail
+          headers=$(mktemp)
+          body=$(mktemp)
+          status=$(curl -sS -D "$headers" -o "$body" -w '%{http_code}' -X OPTIONS "$EDGE_URL" \
+            -H "Origin: $ALLOWED_ORIGIN" \
+            -H 'Access-Control-Request-Method: POST' \
+            -H 'Access-Control-Request-Headers: authorization,content-type,x-request-id,x-meicare-canary')
+          test "$status" = "200"
+          grep -qi "^access-control-allow-origin: $ALLOWED_ORIGIN" "$headers"
+          grep -qi '^access-control-allow-headers:.*x-meicare-canary' "$headers"
+
+      - name: Disallowed-origin preflight must fail closed
+        shell: bash
+        run: |
+          set -euo pipefail
+          status=$(curl -sS -o /tmp/v4g-bad-origin.json -w '%{http_code}' -X OPTIONS "$EDGE_URL" \
+            -H 'Origin: https://example.invalid' \
+            -H 'Access-Control-Request-Method: POST' \
+            -H 'Access-Control-Request-Headers: authorization,content-type,x-meicare-canary')
+          test "$status" = "403"
+
+      - name: Canary POST without JWT must be rejected
+        shell: bash
+        run: |
+          set -euo pipefail
+          status=$(curl -sS -o /tmp/v4g-no-auth.json -w '%{http_code}' -X POST "$EDGE_URL" \
+            -H "Origin: $ALLOWED_ORIGIN" \
+            -H 'Content-Type: application/json' \
+            -H 'X-Meicare-Canary: V4_009G' \
+            --data '{}')
+          test "$status" = "401"
+
+      - name: Invalid JWT must be rejected without mutation
+        shell: bash
+        run: |
+          set -euo pipefail
+          status=$(curl -sS -o /tmp/v4g-invalid-auth.json -w '%{http_code}' -X POST "$EDGE_URL" \
+            -H "Origin: $ALLOWED_ORIGIN" \
+            -H 'Content-Type: application/json' \
+            -H 'X-Meicare-Canary: V4_009G' \
+            -H 'Authorization: Bearer invalid-canary-token' \
+            --data '{}')
+          test "$status" = "401"
+
+      - name: Public smoke summary
+        run: echo 'V4_009G public CORS/auth smoke passed; no valid JWT or member mutation was used.'

@@ -1,0 +1,88 @@
+name: V4_009G Cloudflare Pages Canary
+
+on:
+  push:
+    branches: ["v4-009g-member-admin-canary"]
+    paths:
+      - "canary-pages/**"
+      - ".github/workflows/v4-009g-cloudflare-pages-canary.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate-and-deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Static canary guards
+        run: |
+          node --check canary-pages/public/app.js
+          node --check canary-pages/functions/api/member-admin.js
+          grep -q 'V4_009G' canary-pages/public/app.js
+          grep -q 'V4_009G' canary-pages/functions/api/member-admin.js
+          if grep -Eiq 'SUPABASE_SERVICE_ROLE_KEY|sb_secret_|service_role' canary-pages/public/app.js canary-pages/public/index.html; then
+            echo "Browser canary contains a forbidden secret/service-role marker"
+            exit 1
+          fi
+      - name: Cloudflare credentials status
+        id: cf
+        env:
+          CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CF_ACCOUNT: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          if [ -n "$CF_TOKEN" ] && [ -n "$CF_ACCOUNT" ]; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+            echo "Cloudflare credentials available; deploying controlled preview."
+          else
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "Cloudflare credentials are not configured in GitHub Actions; preview deployment skipped."
+          fi
+      - name: Deploy branch preview to existing Pages project
+        if: steps.cf.outputs.ready == 'true'
+        working-directory: canary-pages
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: npx --yes wrangler@4 pages deploy public --project-name meicare-smart-pharmacy --branch v4-009g-canary --commit-dirty=true
+      - name: Live preview smoke
+        if: steps.cf.outputs.ready == 'true'
+        env:
+          PREVIEW_URL: https://v4-009g-canary.meicare-smart-pharmacy.pages.dev
+        run: |
+          set -euo pipefail
+          for i in {1..12}; do
+            code=$(curl -sS -o /tmp/index.html -w '%{http_code}' "$PREVIEW_URL/") || true
+            if [ "$code" = "200" ]; then break; fi
+            sleep 5
+          done
+          test "$code" = "200"
+          grep -q 'V4_009G' /tmp/index.html
+
+          code=$(curl -sS -o /tmp/get.json -w '%{http_code}' "$PREVIEW_URL/api/member-admin")
+          test "$code" = "405"
+
+          code=$(curl -sS -o /tmp/no-marker.json -w '%{http_code}' -X POST -H 'content-type: application/json' --data '{}' "$PREVIEW_URL/api/member-admin")
+          test "$code" = "403"
+          grep -q 'CANARY_HEADER_REQUIRED' /tmp/no-marker.json
+
+          code=$(curl -sS -o /tmp/no-auth.json -w '%{http_code}' -X POST -H 'content-type: application/json' -H 'x-meicare-canary: V4_009G' --data '{}' "$PREVIEW_URL/api/member-admin")
+          test "$code" = "401"
+          grep -q 'AUTH_REQUIRED' /tmp/no-auth.json
+
+          code=$(curl -sS -o /tmp/bad-jwt.json -w '%{http_code}' -X POST -H 'content-type: application/json' -H 'x-meicare-canary: V4_009G' -H 'authorization: Bearer invalid.v4_009g.token' --data '{"action":"set_status","organization_id":"68d83220-4e5d-46e7-8bd3-7863205985f4"}' "$PREVIEW_URL/api/member-admin")
+          test "$code" = "401"
+      - name: Canary deployment summary
+        run: |
+          echo "### V4_009G Cloudflare Pages canary" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Target project: meicare-smart-pharmacy" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Branch alias: v4-009g-canary" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Preview alias: https://v4-009g-canary.meicare-smart-pharmacy.pages.dev" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Deploy attempted: ${{ steps.cf.outputs.ready }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Public preview smoke: page + method/header/JWT fail-closed" >> "$GITHUB_STEP_SUMMARY"
+          echo "- frontend_v4_ready must remain false" >> "$GITHUB_STEP_SUMMARY"
