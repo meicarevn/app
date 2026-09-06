@@ -1,12 +1,16 @@
 # V4_010 — Full Shadow Frontend Preview Acceptance
 
-Status: **ISOLATED PREVIEW / READ ONLY**
+Status: **ISOLATED PREVIEW DEPLOYED / AUTOMATED READ-ONLY SMOKE PASS / AUTHENTICATED UX ACCEPTANCE PENDING**
 
 Issue: #19
 
 ## Boundary
 
 The V4_010 preview is deployed only to a Cloudflare Pages branch alias. It does not replace the normal MEICARE production UI and it must not change `frontend_v4_ready`.
+
+Stable preview URL:
+
+`https://v4-010-shadow-preview.meicare-smart-pharmacy.pages.dev`
 
 The preview uses:
 
@@ -17,6 +21,32 @@ The preview uses:
 - Supabase RLS as the final data-access authority.
 
 The preview does not use or expose a Supabase service-role key.
+
+## Deployment and automated evidence
+
+GitHub Actions run **34014115632** completed successfully on commit `d94b59db4c29686f00e8f4118d7be116bf65269a`.
+
+Deployment evidence:
+
+- existing Pages project: `meicare-smart-pharmacy`;
+- branch alias: `v4-010-shadow-preview`;
+- stable preview: `https://v4-010-shadow-preview.meicare-smart-pharmacy.pages.dev`;
+- observed deployment URL: `https://7e919314.meicare-smart-pharmacy.pages.dev`;
+- Worker/Pages Functions bundle compiled and deployed successfully;
+- repository TypeScript check = PASS;
+- unit tests = **37 / 37 PASS**;
+- preview JavaScript syntax = PASS;
+- service-role/secret static guard = PASS.
+
+Live preview smoke passed on the first check for every route:
+
+- root = HTTP **200** with `SHADOW · READ ONLY` marker;
+- canonical `/login` = HTTP **200** with V4_010 marker;
+- unauthenticated `/v4/shadow/session` = **401 UNAUTHORIZED**;
+- unauthenticated `/v4/shadow/overview` = **401 UNAUTHORIZED**;
+- POST `/v4/shadow/overview` = **405 METHOD_NOT_ALLOWED** before authentication.
+
+The existing **V4 Shadow Read CI** run **34014116775** on the same head also completed successfully.
 
 ## Read-only controls
 
@@ -60,32 +90,38 @@ RLS remains authoritative after these UI/API gates.
 - refresh and connection controls remain usable;
 - no horizontal page overflow outside intentional table/navigation scroll regions.
 
-## Session acceptance
+## Authenticated session acceptance still required
 
 1. Open the isolated preview.
-2. Sign in through `login.html` with the existing Supabase account.
+2. Open `/login` and sign in with an existing Supabase account.
 3. Verify redirect to the V4 Shadow UI.
 4. Verify organization and role/scope are derived from the authenticated session.
-5. Exercise only GET/read views.
-6. Clear the preview session or close the tab after testing.
+5. Exercise only GET/read views appropriate to that role.
+6. Check desktop/tablet/mobile layout as applicable.
+7. Clear the preview session or close the tab after testing.
 
 The password is not stored. The access token is stored only in the tab's `sessionStorage` for this isolated acceptance preview. This is not the final production authentication UX.
 
-## Automated smoke expectations
+## Production invariant after deployment
 
-- preview root returns 200;
-- preview login page returns 200;
-- unauthenticated GET `/v4/shadow/session` returns 401;
-- unauthenticated GET `/v4/shadow/overview` returns 401;
-- POST `/v4/shadow/overview` returns 405 before auth;
-- browser/static source contains no service-role/secret-key marker;
-- deployment uses an isolated branch alias;
-- normal production Pages hostname is not overwritten.
+Post-deployment database verification remains:
+
+- `cutover_stage = SHADOW`
+- `inventory_write_mode = LEGACY`
+- `alert_publish_mode = SHADOW`
+- `his_ingestion_mode = HYBRID`
+- `integration_layer_ready = false`
+- `frontend_v4_ready = false`
+- `r2_gateway_ready = false`
+- `iot_gateway_ready = false`
+- `ai_orchestrator_ready = false`
+- inventory ledger drift rows = **0**
 
 ## Promotion blockers
 
-The preview may be considered technically observable after smoke/role/device acceptance, but `frontend_v4_ready` must remain false while any of the following remain unresolved:
+The preview is technically deployed and automated read-only smoke is complete, but `frontend_v4_ready` must remain false while any of the following remain unresolved:
 
+- authenticated role/device UX acceptance is incomplete;
 - Founder B semantic review for the 284 zero-stock/insufficient-evidence cases;
 - Founder B review of the 19 expiry-priority cases;
 - demand/forecast coverage remains absent;
