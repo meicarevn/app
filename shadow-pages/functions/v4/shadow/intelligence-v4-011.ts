@@ -1,6 +1,6 @@
 import { HttpError, requestId } from "../../../../src/lib";
 import { getShadowAccess, shadowOrganizationId } from "../../../../src/shadow-access";
-import { projectMultiAxisRows, summarizeMultiAxis } from "../../../../src/intelligence-v4-011";
+import { hydratePromotedDbRows, promotedMetadataComplete, summarizePromotedDbRows } from "../../../../src/intelligence-v4-011-db-read";
 
 type Env = Record<string, never>;
 type PagesContext = { request: Request; env: Env };
@@ -33,53 +33,70 @@ function json(body: unknown, status: number, rid: string) {
       "x-content-type-options": "nosniff",
       "x-frame-options": "DENY",
       "content-security-policy": "default-src 'none'; frame-ancestors 'none'",
-      "x-request-id": rid
+      "x-request-id": rid,
+      "x-meicare-read-path": "V4_011D2_DB_PROJECTION"
     }
   });
 }
 
-async function fetchAllInventory(req: Request, rid: string, org: string): Promise<Row[]> {
+async function fetchAll(
+  req: Request,
+  rid: string,
+  table: string,
+  org: string,
+  select: string,
+  order: string
+): Promise<Row[]> {
   const token = bearer(req);
   const rows: Row[] = [];
-  const select = [
-    "organization_id","warehouse_id","drug_id","quantity_on_hand","usable_quantity",
-    "quantity_reserved","quantity_quarantined","quantity_rejected","expired_quantity",
-    "near_expiry_quantity","inventory_value","unpriced_lot_count","forecast_daily_demand",
-    "demand_pattern","demand_confidence_level","data_quality_score","days_of_supply",
-    "last_true_issue_at","inactive_days","slow_moving_status","reference_stock","reference_basis",
-    "suggested_target_stock","recommended_order_quantity","expiry_quantity_at_risk",
-    "expiry_value_at_risk","highest_expiry_risk","stock_status","risk_score",
-    "recommendation_basis","calculated_at",
-    "drugs!inventory_intelligence_v4_drug_id_fkey(drug_code,name,generic_name,strength,unit,abc_class,ved_class,cold_chain_flag,controlled_flag)",
-    "warehouses!inventory_intelligence_v4_warehouse_id_fkey(code,name)"
-  ].join(",");
-
   for (let offset = 0; offset < MAX_ROWS; offset += PAGE_SIZE) {
-    const url = new URL(`${SUPABASE_URL}/rest/v1/inventory_intelligence_v4`);
+    const url = new URL(`${SUPABASE_URL}/rest/v1/${table}`);
     url.searchParams.set("organization_id", `eq.${org}`);
     url.searchParams.set("select", select);
-    url.searchParams.set("order", "warehouse_id.asc,drug_id.asc");
+    url.searchParams.set("order", order);
     const response = await fetch(url.toString(), {
+      method: "GET",
       headers: {
         apikey: SUPABASE_ANON_KEY,
         authorization: `Bearer ${token}`,
         accept: "application/json",
         range: `${offset}-${offset + PAGE_SIZE - 1}`,
-        "x-request-id": rid
-      }
+        "x-request-id": rid,
+        "x-meicare-read-path": "V4_011D2_DB_PROJECTION"
+      },
+      cache: "no-store"
     });
     if (!response.ok) {
-      console.error(JSON.stringify({ event: "v4_011_shadow_read_failed", status: response.status, request_id: rid }));
+      console.error(JSON.stringify({ event: "v4_011_promoted_read_failed", table, status: response.status, request_id: rid }));
       throw new HttpError(response.status === 401 || response.status === 403 ? response.status : 502, "V4_011_SHADOW_READ_FAILED");
     }
     const page = await response.json() as Row[];
     rows.push(...page);
     if (page.length < PAGE_SIZE) break;
   }
-
   if (rows.length >= MAX_ROWS) throw new HttpError(409, "V4_011_ROW_LIMIT_EXCEEDED");
   return rows;
 }
+
+const DB_SELECT = [
+  "organization_id","warehouse_id","drug_id","analytics_run_id","quantity_on_hand","usable_quantity",
+  "quantity_reserved","quantity_quarantined","quantity_rejected","expired_quantity","near_expiry_quantity",
+  "inventory_value","unpriced_lot_count","organization_usable_quantity","forecast_daily_demand","demand_pattern",
+  "demand_confidence_level","data_quality_score","days_of_supply","last_true_issue_at","inactive_days",
+  "slow_moving_status","approved_min_stock","approved_reorder_point","approved_target_stock","approved_max_stock",
+  "reference_stock","reference_basis","suggested_target_stock","recommended_order_quantity","expiry_quantity_at_risk",
+  "expiry_value_at_risk","highest_expiry_risk","availability_state","availability_reason_codes","expiry_state",
+  "expiry_reason_codes","expiry_evidence_mode","evidence_state","evidence_qualifiers","recommendation_state",
+  "recommendation_reason_codes","recommendation_requires_human_review","suppress_expected_wastage_claims",
+  "supported_expiry_quantity_at_risk","supported_expiry_value_at_risk","legacy_v4_stock_status",
+  "legacy_v4_risk_score","legacy_v4_risk_components","legacy_v4_recommendation_basis","calculated_at","model_version"
+].join(",");
+
+const DRUG_SELECT = [
+  "id","drug_code","name","generic_name","strength","unit","abc_class","ved_class","cold_chain_flag","controlled_flag"
+].join(",");
+
+const WAREHOUSE_SELECT = ["id","code","name"].join(",");
 
 function matches(row: Record<string, unknown>, url: URL) {
   const availability = url.searchParams.get("availability")?.trim().toUpperCase();
@@ -106,9 +123,17 @@ async function handle(context: PagesContext) {
     if (!access.permissions.includes("inventory.view")) throw new HttpError(403, "SHADOW_PERMISSION_DENIED");
     if (!access.organization_scope) throw new HttpError(403, "SHADOW_SCOPE_DENIED");
 
-    const sourceRows = await fetchAllInventory(req, rid, org);
-    const projected = projectMultiAxisRows(sourceRows);
-    const summary = summarizeMultiAxis(projected);
+    const [dbRows, drugs, warehouses] = await Promise.all([
+      fetchAll(req, rid, "inventory_intelligence_multi_axis_v4_011", org, DB_SELECT, "warehouse_id.asc,drug_id.asc"),
+      fetchAll(req, rid, "drugs", org, DRUG_SELECT, "id.asc"),
+      fetchAll(req, rid, "warehouses", org, WAREHOUSE_SELECT, "id.asc")
+    ]);
+
+    const projected = hydratePromotedDbRows(dbRows, drugs, warehouses);
+    if (!promotedMetadataComplete(projected)) throw new HttpError(502, "V4_011_METADATA_INCOMPLETE");
+    const summary = summarizePromotedDbRows(projected);
+    if (summary.recommendations_without_human_review !== 0) throw new HttpError(409, "V4_011_UNSAFE_RECOMMENDATION_STATE");
+
     const filtered = projected.filter((row) => matches(row, url));
     const limit = boundedInt(url.searchParams.get("limit"), 100, 1, 250);
     const offset = boundedInt(url.searchParams.get("offset"), 0, 0, 10000);
@@ -119,9 +144,11 @@ async function handle(context: PagesContext) {
       organization_id: org,
       generated_at: new Date().toISOString(),
       model_version: "V4_011_MULTI_AXIS",
-      source_model: "inventory_intelligence_v4",
+      source_model: "inventory_intelligence_multi_axis_v4_011",
+      read_path: "DB_PROJECTION",
+      promotion_gate: "V4_011D2",
       organization_scope_required: true,
-      source_rows: sourceRows.length,
+      source_rows: dbRows.length,
       projected_rows: projected.length,
       total: filtered.length,
       limit,
