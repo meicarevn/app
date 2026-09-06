@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="robots" content="noindex,nofollow" />
+  <title>MEICARE · Quản trị thành viên V4</title>
+  <link rel="stylesheet" href="./styles.css" />
+  <link rel="stylesheet" href="./role-ux.css" />
+  <link rel="stylesheet" href="./member-admin.css" />
+</head>
+<body>
+  <a class="skip-link" href="#content">Bỏ qua điều hướng</a>
+  <header class="topbar">
+    <div class="brand">
+      <div class="brand-mark" aria-hidden="true">M</div>
+      <div><strong>MEICARE</strong><span>Member Governance V4</span></div>
+    </div>
+    <div class="topbar-actions">
+      <span class="shadow-badge">SHADOW · GOVERNED WRITE</span>
+      <a class="secondary-button admin-back-link" href="./index.html">← Shadow Dashboard</a>
+    </div>
+  </header>
+
+  <main class="member-admin-shell" id="content" tabindex="-1">
+    <section class="page-heading member-heading">
+      <div>
+        <p class="eyebrow">V4_009F · Member Lifecycle</p>
+        <h1>Thành viên & phân quyền</h1>
+        <p>Mời thành viên, quản lý vòng đời tài khoản và role/scope. Mọi thay đổi bắt buộc có lý do audit.</p>
+      </div>
+      <button id="refreshMembers" class="primary-button" type="button">Làm mới</button>
+    </section>
+
+    <section class="notice warning" id="releaseGateNotice">
+      <strong>Production gate đang khóa.</strong>
+      <span>UI này đã được chuẩn bị cho V4 nhưng backend lifecycle/Edge Function chưa được deploy production nếu chưa có Founder A approval.</span>
+    </section>
+    <section id="adminError" class="notice error" hidden></section>
+    <section id="adminSuccess" class="notice success" hidden></section>
+
+    <section class="admin-grid">
+      <article class="admin-card">
+        <div class="admin-card-heading">
+          <div><p class="eyebrow">Invitation</p><h2>Mời thành viên</h2></div>
+          <span class="admin-chip">Audit required</span>
+        </div>
+        <form id="inviteForm" class="admin-form">
+          <label>Họ tên<input id="inviteName" maxlength="160" required /></label>
+          <label>Email<input id="inviteEmail" type="email" maxlength="254" required /></label>
+          <label>Role<select id="inviteRole" required></select></label>
+          <label>Phạm vi<select id="inviteScopeType" required></select></label>
+          <label id="inviteScopeTargetLabel" hidden>Đơn vị / Kho<select id="inviteScopeId"></select></label>
+          <label>Bộ phận<select id="inviteDepartment"><option value="">Không gán bộ phận</option></select></label>
+          <label class="full-width">Lý do phân quyền<textarea id="inviteReason" rows="3" maxlength="1000" required placeholder="Ví dụ: Bổ sung dược sĩ phụ trách Kho 1 từ ngày …"></textarea></label>
+          <div class="dialog-actions full-width"><button class="primary-button" type="submit">Gửi lời mời</button></div>
+        </form>
+      </article>
+
+      <article class="admin-card admin-card-wide">
+        <div class="admin-card-heading">
+          <div><p class="eyebrow">Lifecycle</p><h2>Danh sách thành viên</h2></div>
+          <div id="memberSummary" class="admin-summary"></div>
+        </div>
+        <div class="table-scroll"><table class="admin-table">
+          <thead><tr><th>Thành viên</th><th>Trạng thái</th><th>Role / Scope</th><th>Cập nhật</th><th>Thao tác</th></tr></thead>
+          <tbody id="membersBody"></tbody>
+        </table></div>
+      </article>
+
+      <article class="admin-card admin-card-wide">
+        <div class="admin-card-heading"><div><p class="eyebrow">Audit</p><h2>Lịch sử vòng đời</h2></div></div>
+        <div id="historyList" class="history-list"></div>
+      </article>
+    </section>
+  </main>
+
+  <dialog id="memberActionDialog">
+    <form method="dialog" id="memberActionForm" class="admin-dialog-form">
+      <div class="dialog-heading">
+        <div><p class="eyebrow" id="actionEyebrow">Governed action</p><h2 id="actionTitle">Cập nhật thành viên</h2></div>
+        <button class="icon-button" value="cancel" type="submit" aria-label="Đóng">×</button>
+      </div>
+      <p id="actionDescription" class="muted"></p>
+      <div id="roleActionFields" hidden>
+        <label>Role<select id="actionRole"></select></label>
+        <label>Phạm vi<select id="actionScopeType"></select></label>
+        <label id="actionScopeTargetLabel" hidden>Đơn vị / Kho<select id="actionScopeId"></select></label>
+      </div>
+      <label>Lý do audit<textarea id="actionReason" rows="4" maxlength="1000" required></textarea></label>
+      <div class="dialog-actions">
+        <button class="secondary-button" value="cancel" type="submit">Huỷ</button>
+        <button id="confirmMemberAction" class="primary-button" value="default" type="button">Xác nhận</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script src="./member-admin.js" defer></script>
+</body>
+</html>

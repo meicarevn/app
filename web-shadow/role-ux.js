@@ -16,6 +16,7 @@
   const sessionContext = document.getElementById("sessionContext");
   const scopeNotice = document.getElementById("scopeNotice");
   const saveConnectionButton = document.getElementById("saveConnectionButton");
+  const memberAdminLink = document.getElementById("memberAdminLink");
 
   function escapeHtml(value) {
     return String(value ?? "")
@@ -41,6 +42,7 @@
     sessionContext.hidden = true;
     sessionContext.textContent = "";
     scopeNotice.hidden = true;
+    if (memberAdminLink) memberAdminLink.hidden = true;
     document.querySelectorAll(".nav-item").forEach((item) => { item.hidden = false; });
   }
 
@@ -50,6 +52,7 @@
       const required = capabilityByView[item.dataset.view];
       item.hidden = required ? capabilities[required] !== true : false;
     });
+    if (memberAdminLink) memberAdminLink.hidden = capabilities.member_admin !== true;
 
     const roles = Array.isArray(session.roles) ? session.roles : [];
     const roleCodes = [...new Set(roles.map((role) => role.role_code).filter(Boolean))];
