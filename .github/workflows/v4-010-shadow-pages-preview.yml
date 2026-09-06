@@ -1,0 +1,137 @@
+name: V4_010 Full Shadow Pages Preview
+
+on:
+  push:
+    branches:
+      - v4-010-full-shadow-preview
+    paths:
+      - "web-shadow/**"
+      - "shadow-pages/**"
+      - "src/shadow.ts"
+      - "src/lib.ts"
+      - "src/semantic-v4-010c.ts"
+      - "src/member-admin-read.ts"
+      - "src/shadow-access.ts"
+      - "test/semantic-v4-010c.test.ts"
+      - "docs/V4_010_*.md"
+      - ".github/workflows/v4-010-shadow-pages-preview.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate-deploy-smoke:
+    runs-on: ubuntu-latest
+    env:
+      PREVIEW_URL: https://v4-010-shadow-preview.meicare-smart-pharmacy.pages.dev
+      ORG_ID: 68d83220-4e5d-46e7-8bd3-7863205985f4
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Existing worker typecheck and unit tests
+        run: |
+          npm run check
+          npm test
+
+      - name: Preview JavaScript syntax
+        run: |
+          node --check web-shadow/app.js
+          node --check web-shadow/role-ux.js
+          node --check web-shadow/login.js
+          node --check web-shadow/semantic-review.js
+
+      - name: Static preview security guards
+        shell: bash
+        run: |
+          set -euo pipefail
+          if grep -R -Eiq 'SUPABASE_SERVICE_ROLE_KEY|sb_secret_|service_role' web-shadow shadow-pages/functions; then
+            echo "Forbidden service credential marker found in V4_010 preview source"
+            exit 1
+          fi
+          grep -q 'SHADOW · READ ONLY' web-shadow/index.html
+          grep -q 'V4_010C · FOUNDER B A1 + B1' web-shadow/semantic-review.html
+          grep -q 'V4_010C_A1_B1' web-shadow/semantic-review.js
+          grep -q 'METHOD_NOT_ALLOWED' 'shadow-pages/functions/v4/shadow/[[path]].ts'
+          grep -q 'handleMemberAdminRead' 'shadow-pages/functions/v4/shadow/[[path]].ts'
+          grep -q 'getShadowAccess' 'shadow-pages/functions/v4/shadow/[[path]].ts'
+          grep -q 'enforceShadowRoute' 'shadow-pages/functions/v4/shadow/[[path]].ts'
+
+      - name: Assemble Pages public directory
+        run: |
+          rm -rf shadow-pages/public
+          mkdir -p shadow-pages/public
+          cp -R web-shadow/. shadow-pages/public/
+
+      - name: Cloudflare credentials status
+        id: cf
+        env:
+          CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CF_ACCOUNT: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          if [ -n "$CF_TOKEN" ] && [ -n "$CF_ACCOUNT" ]; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "Cloudflare credentials missing."
+          fi
+
+      - name: Deploy isolated full Shadow preview
+        if: steps.cf.outputs.ready == 'true'
+        working-directory: shadow-pages
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: npx --yes wrangler@4 pages deploy public --project-name meicare-smart-pharmacy --branch v4-010-shadow-preview --commit-dirty=true
+
+      - name: Live preview read-only smoke
+        if: steps.cf.outputs.ready == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          wait_for() {
+            local label="$1" method="$2" url="$3" expected="$4" marker="$5" body="$6"
+            for attempt in $(seq 1 12); do
+              if [ "$method" = "POST" ]; then
+                code=$(curl -sS -X POST -H 'content-type: application/json' -d '{}' -o "$body" -w '%{http_code}' "$url" || true)
+              else
+                code=$(curl -sS -L -o "$body" -w '%{http_code}' "$url" || true)
+              fi
+              echo "$label attempt=$attempt status=$code"
+              if [ "$code" = "$expected" ] && grep -q "$marker" "$body"; then return 0; fi
+              if [ "$attempt" = "12" ]; then
+                echo "$label failed; expected HTTP $expected and marker $marker"
+                cat "$body" || true
+                return 1
+              fi
+              sleep 5
+            done
+          }
+
+          wait_for "root" GET "$PREVIEW_URL/" 200 'SHADOW · READ ONLY' /tmp/root.html
+          wait_for "login" GET "$PREVIEW_URL/login" 200 'V4_010' /tmp/login.html
+          wait_for "semantic shadow" GET "$PREVIEW_URL/semantic-review" 200 'V4_010C' /tmp/semantic.html
+          wait_for "session unauthenticated" GET "$PREVIEW_URL/v4/shadow/session?organization_id=$ORG_ID" 401 'UNAUTHORIZED' /tmp/session.json
+          wait_for "members unauthenticated" GET "$PREVIEW_URL/v4/shadow/members?organization_id=$ORG_ID" 401 'UNAUTHORIZED' /tmp/members.json
+          wait_for "overview unauthenticated" GET "$PREVIEW_URL/v4/shadow/overview?organization_id=$ORG_ID" 401 'UNAUTHORIZED' /tmp/overview.json
+          wait_for "POST fail closed" POST "$PREVIEW_URL/v4/shadow/overview?organization_id=$ORG_ID" 405 'METHOD_NOT_ALLOWED' /tmp/post.json
+
+      - name: Preview deployment summary
+        if: always()
+        run: |
+          echo "### V4_010 Full Shadow Preview" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Target Pages project: meicare-smart-pharmacy" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Isolated alias: $PREVIEW_URL" >> "$GITHUB_STEP_SUMMARY"
+          echo "- V4_010C semantic acceptance page included" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Member-admin read routes use shared V4 RBAC/access layer" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Cloudflare credentials available: ${{ steps.cf.outputs.ready }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Normal production UI is not replaced" >> "$GITHUB_STEP_SUMMARY"
+          echo "- frontend_v4_ready must remain false" >> "$GITHUB_STEP_SUMMARY"

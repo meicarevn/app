@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="color-scheme" content="dark light" />
+  <title>MEICARE V4_010C Semantic Shadow</title>
+  <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="semantic-review.css" />
+</head>
+<body class="semantic-page">
+  <header class="semantic-header">
+    <div>
+      <div class="eyebrow">V4_010C · FOUNDER B A1 + B1</div>
+      <h1>Semantic Shadow Acceptance</h1>
+      <p>Tách availability, expiry và evidence confidence mà không thay đổi production intelligence.</p>
+    </div>
+    <div class="semantic-actions">
+      <a class="secondary-button" href="/">← Shadow UI</a>
+      <button id="refreshButton" class="primary-button">Làm mới</button>
+    </div>
+  </header>
+
+  <main class="semantic-main">
+    <section id="statusBox" class="semantic-status">Đang tải dữ liệu Shadow…</section>
+
+    <section class="semantic-approved">
+      <article><strong>A1</strong><span>usable = 0 → <b>OUT_OF_STOCK</b>; thiếu demand chỉ là qualifier.</span></article>
+      <article><strong>B1</strong><span>Giữ <b>EXPIRY_RISK</b> từ hạn dùng trực tiếp; thiếu demand → <b>TIME_WINDOW_ONLY</b>.</span></article>
+    </section>
+
+    <section id="metrics" class="metrics-grid"></section>
+
+    <section class="panel">
+      <header class="panel-header"><div><h3>Cohort A · Stockout + evidence qualifier</h3><p>Không tính recommended order quantity khi evidence nhu cầu chưa đủ.</p></div></header>
+      <div class="panel-body" id="cohortA"></div>
+    </section>
+
+    <section class="panel">
+      <header class="panel-header"><div><h3>Cohort B · Expiry direct evidence</h3><p>Không suy diễn quantity/value sẽ hết hạn nếu chưa có demand evidence.</p></div></header>
+      <div class="panel-body" id="cohortB"></div>
+    </section>
+  </main>
+
+  <script src="semantic-review.js" defer></script>
+</body>
+</html>

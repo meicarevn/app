@@ -1,3 +1,5 @@
+[hidden] { display: none !important; }
+
 .skip-link {
   position: fixed;
   top: 8px;
@@ -50,6 +52,8 @@
 }
 
 .nav-item[hidden] { display: none !important; }
+.topbar-actions { min-width: 0; flex: 0 1 auto; }
+.topbar-actions .secondary-button { white-space: nowrap; flex: 0 0 auto; }
 button:disabled { cursor: not-allowed; opacity: .5; }
 button:focus-visible,
 input:focus-visible,
@@ -71,7 +75,12 @@ a:focus-visible {
 }
 
 @media (max-width: 1100px) {
-  .topbar { min-height: 68px; }
+  .topbar { min-height: 68px; gap: 10px; }
+  .brand { flex: 1 1 auto; }
+  .brand span { display: none; }
+  .topbar-actions { gap: 7px; }
+  .shadow-badge { display: none; }
+  #connectionButton { display: none; }
   .app-shell { display: block; padding-top: 68px; }
   .sidebar {
     top: 68px;
@@ -132,9 +141,11 @@ a:focus-visible {
   .pagination { align-items: flex-start; }
 }
 
-@media (max-width: 480px) {
-  .topbar-actions .secondary-button { min-width: 44px; padding-inline: 9px; font-size: 0; }
-  .topbar-actions .secondary-button::before { content: "⚙"; font-size: 18px; }
+@media (max-width: 560px) {
+  .brand strong { font-size: 13px; }
+  .brand-mark { width: 36px; height: 36px; border-radius: 11px; }
+  .topbar-actions .secondary-button { padding-inline: 9px; }
+  #memberAdminLink { display: none !important; }
   .metrics-grid { grid-template-columns: 1fr; }
   .role-badge { max-width: 112px; }
   .session-context { display: grid; grid-template-columns: 1fr; }
@@ -142,6 +153,17 @@ a:focus-visible {
   .pagination { display: grid; }
   .pagination .buttons { width: 100%; }
   .pagination .buttons button { flex: 1; }
+}
+
+@media (prefers-color-scheme: dark) {
+  .role-badge {
+    color: #8dbbff;
+    border-color: #5d8fd2;
+  }
+  .notice.warning,
+  .compare-warning { color: #f6d46b; border-color: #c69a35; }
+  .notice.error { color: #ff8b83; border-color: #b95e5a; }
+  .compare-ok { color: #69dba6; border-color: #4d9d79; }
 }
 
 @media (prefers-reduced-motion: reduce) {
