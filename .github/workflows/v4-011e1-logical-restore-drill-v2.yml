@@ -49,19 +49,18 @@ jobs:
           SOURCE_DB_URL=""
           CREDENTIAL_SOURCE=""
           if [ -n "${URL_A:-}" ]; then
-            SOURCE_DB_URL="$URL_A"; CREDENTIAL_SOURCE="SUPABASE_DB_URL"
+            SOURCE_DB_URL="$URL_A"
+            CREDENTIAL_SOURCE="SUPABASE_DB_URL"
           elif [ -n "${URL_B:-}" ]; then
-            SOURCE_DB_URL="$URL_B"; CREDENTIAL_SOURCE="SUPABASE_DATABASE_URL"
+            SOURCE_DB_URL="$URL_B"
+            CREDENTIAL_SOURCE="SUPABASE_DATABASE_URL"
           elif [ -n "${URL_C:-}" ]; then
-            SOURCE_DB_URL="$URL_C"; CREDENTIAL_SOURCE="DATABASE_URL"
+            SOURCE_DB_URL="$URL_C"
+            CREDENTIAL_SOURCE="DATABASE_URL"
           else
             RAW_PASSWORD="${PASS_A:-${PASS_B:-}}"
             if [ -n "$RAW_PASSWORD" ]; then
-              ENCODED_PASSWORD=$(RAW_PASSWORD="$RAW_PASSWORD" python3 - <<'PY'
-import os, urllib.parse
-print(urllib.parse.quote(os.environ['RAW_PASSWORD'], safe=''))
-PY
-              )
+              ENCODED_PASSWORD=$(RAW_PASSWORD="$RAW_PASSWORD" python3 -c "import os,urllib.parse; print(urllib.parse.quote(os.environ['RAW_PASSWORD'], safe=''))")
               SOURCE_DB_URL="postgresql://postgres.${PROJECT_REF}:${ENCODED_PASSWORD}@aws-0-${PROJECT_REGION}.pooler.supabase.com:5432/postgres?sslmode=require"
               CREDENTIAL_SOURCE="DATABASE_PASSWORD"
             fi
@@ -138,7 +137,9 @@ PY
             -p 127.0.0.1:54322:5432 \
             supabase/postgres:17.6.1.155 >/dev/null
           for attempt in $(seq 1 60); do
-            pg_isready -h 127.0.0.1 -p 54322 -U postgres >/dev/null 2>&1 && exit 0
+            if pg_isready -h 127.0.0.1 -p 54322 -U postgres >/dev/null 2>&1; then
+              exit 0
+            fi
             sleep 2
           done
           docker logs meicare-v4-011e1-restore --tail 100
@@ -152,39 +153,36 @@ PY
           set -euo pipefail
           WORK="$RUNNER_TEMP/v4-011e1"
 
-          python3 - "$WORK/roles.sql" "$WORK/bootstrap-roles.txt" <<'PY'
-import re, sys
-src, out = sys.argv[1], sys.argv[2]
-creates, refs = set(), set()
-for raw in open(src, encoding='utf-8'):
-    line = raw.strip()
-    m = re.match(r'CREATE ROLE "([A-Za-z_][A-Za-z0-9_]*)"', line)
-    if m:
-        creates.add(m.group(1)); refs.add(m.group(1)); continue
-    m = re.match(r'ALTER ROLE "([A-Za-z_][A-Za-z0-9_]*)"', line)
-    if m:
-        refs.add(m.group(1)); continue
-    m = re.match(r'(?:GRANT|REVOKE) "([A-Za-z_][A-Za-z0-9_]*)" (?:TO|FROM) "([A-Za-z_][A-Za-z0-9_]*)"', line)
-    if m:
-        refs.update(m.groups())
-bootstrap = sorted(refs - creates)
-open(out, 'w', encoding='utf-8').write('\n'.join(bootstrap) + ('\n' if bootstrap else ''))
-PY
+          grep -E '^(ALTER ROLE|GRANT |REVOKE )' "$WORK/roles.sql" \
+            | grep -oE '"[A-Za-z_][A-Za-z0-9_]*"' \
+            | tr -d '"' \
+            | sort -u > "$WORK/referenced-roles.txt" || true
 
-          while IFS= read -r role; do
-            [ -n "$role" ] || continue
-            [[ "$role" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || { echo "Invalid role token"; exit 1; }
+          ensure_role() {
+            local role="$1"
+            if grep -Eq "^CREATE ROLE \"${role}\"" "$WORK/roles.sql"; then
+              return 0
+            fi
+            local exists
             exists=$(psql "$RESTORE_DB_URL" -X -q -A -t -v ON_ERROR_STOP=1 -v role="$role" \
               -c "select count(*) from pg_roles where rolname = :'role';")
             if [ "$exists" = "0" ]; then
               psql "$RESTORE_DB_URL" -X -q -v ON_ERROR_STOP=1 -c "create role \"$role\" nologin;"
             fi
-          done < "$WORK/bootstrap-roles.txt"
+          }
+
+          while IFS= read -r role; do
+            [ -n "$role" ] || continue
+            [[ "$role" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || { echo "Invalid role token"; exit 1; }
+            ensure_role "$role"
+          done < "$WORK/referenced-roles.txt"
+
+          ensure_role anon
+          ensure_role authenticated
+          ensure_role service_role
 
           psql "$RESTORE_DB_URL" -X -q -v ON_ERROR_STOP=1 <<'SQL'
-          DO $$ BEGIN CREATE ROLE anon NOLOGIN; EXCEPTION WHEN duplicate_object THEN NULL; END $$;
-          DO $$ BEGIN CREATE ROLE authenticated NOLOGIN; EXCEPTION WHEN duplicate_object THEN NULL; END $$;
-          DO $$ BEGIN CREATE ROLE service_role NOLOGIN BYPASSRLS; EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+          ALTER ROLE service_role BYPASSRLS;
           CREATE SCHEMA IF NOT EXISTS auth;
           CREATE TABLE IF NOT EXISTS auth.users (
             id uuid PRIMARY KEY,
@@ -269,6 +267,7 @@ PY
 
           multi_axis_rows=$(psql "$RESTORE_DB_URL" -X -q -A -t -v ON_ERROR_STOP=1 \
             -c "select count(*) from public.inventory_intelligence_multi_axis_v4_011 where organization_id = '${ORG_ID}'::uuid;")
+          multi_axis_rows=$(printf '%s\n' "$multi_axis_rows" | grep -E '^[0-9]+$' | tail -n1)
           test "$multi_axis_rows" = "$EXPECTED_PROJECTION_ROWS"
           echo "owner_rls_rows=$owner_rows" >> "$GITHUB_ENV"
           echo "denied_rls_rows=$denied_rows" >> "$GITHUB_ENV"
