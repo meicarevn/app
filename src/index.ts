@@ -133,13 +133,14 @@ async function verifyIotSignature(
   env: Env,
   rid: string,
   deviceUid: string,
-  timestamp: number,
+  timestamp: string,
+  rawBody: string,
   bodyHash: string,
   signature: string,
   sequenceNumber: number
 ): Promise<Record<string, unknown>> {
   if (!env.IOT_AUTH_URL || !env.IOT_AUTH_TOKEN) throw new HttpError(503, "IOT_AUTH_ADAPTER_NOT_CONFIGURED");
-  if (!/^[A-Za-z0-9+/=_-]{32,512}$/.test(signature)) throw new HttpError(401, "INVALID_IOT_SIGNATURE");
+  if (!/^\d{10}$/.test(timestamp) || !/^[a-fA-F0-9]{64}$/.test(signature)) throw new HttpError(401, "INVALID_IOT_SIGNATURE");
   const res = await fetch(env.IOT_AUTH_URL, {
     method: "POST",
     headers: {
@@ -148,9 +149,10 @@ async function verifyIotSignature(
       "x-request-id": rid
     },
     body: JSON.stringify({
-      signature_version: "v1",
+      signature_version: "legacy-v1",
       device_uid: deviceUid,
       timestamp,
+      raw_body: rawBody,
       body_sha256: bodyHash,
       signature,
       sequence_number: sequenceNumber
@@ -213,15 +215,29 @@ async function handleHisInventory(req: Request, env: Env, rid: string) {
 }
 
 async function handleIot(req: Request, env: Env, rid: string) {
-  const timestamp = validateFreshUnixSeconds(req.headers.get("x-meicare-timestamp"));
-  const signature = req.headers.get("x-meicare-signature")?.trim();
-  if (!signature) throw new HttpError(401, "IOT_SIGNATURE_REQUIRED");
+  const deviceUidHeader = req.headers.get("x-device-id")?.trim() || req.headers.get("x-meicare-device-id")?.trim() || null;
+  const timestampRaw = req.headers.get("x-timestamp")?.trim() || req.headers.get("x-meicare-timestamp")?.trim() || null;
+  const signature = req.headers.get("x-signature")?.trim() || req.headers.get("x-meicare-signature")?.trim() || null;
+  if (!timestampRaw || !signature) throw new HttpError(401, "IOT_AUTH_HEADERS_REQUIRED");
+  if (!/^\d{10}$/.test(timestampRaw)) throw new HttpError(401, "IOT_TIMESTAMP_INVALID");
+  validateFreshUnixSeconds(timestampRaw);
+
   const bytes = await readBody(req, LIMITS.iotJsonBytes);
+  const rawBody = new TextDecoder().decode(bytes);
   const bodyHash = await sha256Hex(bytes);
   const body = parseJsonObject(bytes);
-  const reading = validateIotPayload(body);
+  const reading = validateIotPayload(body, deviceUidHeader);
 
-  const auth = await verifyIotSignature(env, rid, reading.deviceUid, timestamp, bodyHash, signature, reading.sequenceNumber);
+  const auth = await verifyIotSignature(
+    env,
+    rid,
+    reading.deviceUid,
+    timestampRaw,
+    rawBody,
+    bodyHash,
+    signature,
+    reading.sequenceNumber
+  );
   const scope = `iot:${reading.deviceUid}`;
   const key = `seq:${reading.sequenceNumber}`;
   const claim = await guardClaim(env, scope, key, bodyHash, 120);
@@ -245,7 +261,7 @@ async function handleIot(req: Request, env: Env, rid: string) {
         gateway_request_id: rid,
         gateway_payload_sha256: bodyHash,
         auth_key_version: auth.key_version ?? null,
-        auth_signature_version: "v1"
+        auth_signature_version: "legacy-v1"
       }
     }, rid) as Json;
     await guardComplete(env, scope, key, bodyHash, result);
