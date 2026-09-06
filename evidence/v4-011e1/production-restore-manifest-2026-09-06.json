@@ -1,0 +1,49 @@
+{
+  "evidence_type": "V4_011E1_PRODUCTION_RESTORE_MANIFEST",
+  "captured_at_utc": "2026-09-06T14:14:43.983493Z",
+  "project_ref": "sgxufmcsnveyyddazwuk",
+  "postgres_version": "17.6",
+  "database_bytes": 62942355,
+  "migration_count": 59,
+  "latest_migration_version": "20260906072831",
+  "storage": {
+    "supabase_bucket_count": 0,
+    "supabase_object_count": 0,
+    "note": "Database backup does not restore object payloads. MEICARE R2 evidence remains a separate recovery domain."
+  },
+  "security_metadata": {
+    "rls_policy_count_public_and_integration": 160
+  },
+  "runtime": {
+    "organization_id": "68d83220-4e5d-46e7-8bd3-7863205985f4",
+    "cutover_stage": "SHADOW",
+    "inventory_write_mode": "LEGACY",
+    "alert_publish_mode": "SHADOW",
+    "his_ingestion_mode": "HYBRID",
+    "frontend_v4_ready": false,
+    "integration_layer_ready": false,
+    "r2_gateway_ready": false,
+    "iot_gateway_ready": false,
+    "ai_orchestrator_ready": false,
+    "backup_restore_verified_at": null
+  },
+  "inventory_invariants": {
+    "projection_rows": 2244,
+    "ledger_drift_rows": 0
+  },
+  "entities": [
+    {"entity":"integration.import_jobs","row_count":5,"content_hash":"7dd5b7f98ad2b9edf1fb85a384abde15"},
+    {"entity":"public.actions","row_count":896,"content_hash":"6198577e42ea2fd87c0b2ea455dec3d9"},
+    {"entity":"public.alerts","row_count":895,"content_hash":"acdb4d8ef767f9d1256c2c453107d49b"},
+    {"entity":"public.departments","row_count":2,"content_hash":"31860076808fdeb40f8a37014d84b25c"},
+    {"entity":"public.drug_lots","row_count":1457,"content_hash":"826389d6b9d5831b6b4e3c2cfea70e65"},
+    {"entity":"public.drugs","row_count":921,"content_hash":"30b66eace81181f610f98821ee3f91b0"},
+    {"entity":"public.inventory_balances","row_count":3126,"content_hash":"d2279b705b38704a72958dc7f6e7759e"},
+    {"entity":"public.inventory_events","row_count":1671,"content_hash":"a85c02008d3e01d339241d2ec8b7c0b4"},
+    {"entity":"public.inventory_intelligence_v4","row_count":2244,"content_hash":"6283a140a3e92a39ba3e2c849905377d"},
+    {"entity":"public.organization_members","row_count":1,"content_hash":"ce318c5f086bc21d5d0351b66eaa40b0"},
+    {"entity":"public.organizations","row_count":1,"content_hash":"b174f1c4c9a06cd9df9d323e80078699"},
+    {"entity":"public.warehouses","row_count":8,"content_hash":"39b6999e4eb69f099ce289dac9cfabdc"}
+  ],
+  "interpretation": "Read-only preparation baseline only. This file is not proof that a backup artifact exists or that a restore has succeeded. Capture a fresh manifest immediately before the backup used for the actual restore rehearsal."
+}
