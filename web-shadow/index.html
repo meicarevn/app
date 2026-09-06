@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="color-scheme" content="light dark" />
+  <meta name="robots" content="noindex,nofollow" />
+  <title>MEICARE V4 Shadow</title>
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <div class="brand-mark" aria-hidden="true">M</div>
+      <div>
+        <strong>MEICARE</strong>
+        <span>Pharmacy Intelligence Platform</span>
+      </div>
+    </div>
+    <div class="topbar-actions">
+      <span class="shadow-badge">SHADOW · READ ONLY</span>
+      <button id="connectionButton" class="secondary-button" type="button">Kết nối</button>
+    </div>
+  </header>
+
+  <div class="app-shell">
+    <nav class="sidebar" aria-label="Điều hướng V4 Shadow">
+      <button class="nav-item active" data-view="overview" type="button">Tổng quan</button>
+      <button class="nav-item" data-view="inventory" type="button">Kho thông minh</button>
+      <button class="nav-item" data-view="actions" type="button">Action Center</button>
+      <button class="nav-item" data-view="reconciliations" type="button">Đối soát HIS</button>
+      <button class="nav-item" data-view="iot" type="button">IoT / GSP</button>
+      <button class="nav-item" data-view="documents" type="button">Tài liệu & Evidence</button>
+      <button class="nav-item" data-view="compare" type="button">So sánh V3 ↔ V4</button>
+      <button class="nav-item" data-view="readiness" type="button">Production Gate</button>
+    </nav>
+
+    <main class="content" id="content" tabindex="-1">
+      <section class="page-heading">
+        <div>
+          <p class="eyebrow">V4 Shadow Read Layer</p>
+          <h1 id="pageTitle">Tổng quan vận hành</h1>
+          <p id="pageSubtitle">Quan sát dữ liệu V4 mà không thay đổi luồng production.</p>
+        </div>
+        <div class="page-actions">
+          <button id="refreshButton" class="primary-button" type="button">Làm mới</button>
+        </div>
+      </section>
+
+      <section id="connectionNotice" class="notice warning" hidden>
+        <strong>Chưa cấu hình kết nối.</strong>
+        <span>Nhập Gateway URL, Organization ID và access token của phiên đăng nhập để xem dữ liệu Shadow.</span>
+      </section>
+
+      <section id="errorNotice" class="notice error" hidden></section>
+      <section id="loading" class="loading" hidden aria-live="polite">Đang tải dữ liệu V4…</section>
+      <section id="viewRoot" aria-live="polite"></section>
+    </main>
+  </div>
+
+  <dialog id="connectionDialog">
+    <form method="dialog" id="connectionForm">
+      <div class="dialog-heading">
+        <div>
+          <p class="eyebrow">Shadow connection</p>
+          <h2>Kết nối V4 read gateway</h2>
+        </div>
+        <button class="icon-button" value="cancel" aria-label="Đóng" type="submit">×</button>
+      </div>
+      <p class="muted">Thông tin chỉ được giữ trong <code>sessionStorage</code> của tab này. Không dùng service-role key.</p>
+      <label>
+        Gateway URL
+        <input id="gatewayInput" name="gateway" type="url" placeholder="https://…workers.dev" autocomplete="off" required />
+      </label>
+      <label>
+        Organization ID
+        <input id="orgInput" name="organization" type="text" placeholder="UUID" autocomplete="off" required />
+      </label>
+      <label>
+        Supabase access token
+        <textarea id="tokenInput" name="token" rows="4" placeholder="eyJ…" autocomplete="off" required></textarea>
+      </label>
+      <div class="dialog-actions">
+        <button class="secondary-button" value="cancel" type="submit">Huỷ</button>
+        <button id="saveConnectionButton" class="primary-button" value="default" type="button">Lưu phiên</button>
+      </div>
+    </form>
+  </dialog>
+
+  <template id="emptyTemplate">
+    <div class="empty-state">
+      <strong>Chưa có dữ liệu phù hợp</strong>
+      <span>Shadow layer không tự tạo dữ liệu mẫu.</span>
+    </div>
+  </template>
+
+  <script src="./app.js" defer></script>
+</body>
+</html>
