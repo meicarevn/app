@@ -149,11 +149,13 @@ jobs:
 
           api_role_count=$(psql "$RESTORE_DB_URL" -X -q -A -t -v ON_ERROR_STOP=1 \
             -c "select count(*) from pg_roles where rolname in ('anon','authenticated','service_role');")
+          echo "isolated_api_role_count=$api_role_count"
           test "$api_role_count" = "3"
 
           auth_contract_count=$(psql "$RESTORE_DB_URL" -X -q -A -t -v ON_ERROR_STOP=1 \
-            -c "select count(*) from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='auth' and p.proname in ('uid','jwt');")
-          test "$auth_contract_count" -ge "2"
+            -c "select count(*) from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='auth' and p.proname in ('uid','role');")
+          echo "isolated_auth_contract_count=$auth_contract_count"
+          test "$auth_contract_count" = "2"
 
           echo "portable_restore_managed_roles=reused_from_target" >> "$GITHUB_ENV"
           echo "portable_restore_auth_contracts=$auth_contract_count" >> "$GITHUB_ENV"
