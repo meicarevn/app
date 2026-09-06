@@ -9,7 +9,7 @@ export interface ShadowEnv {
 
 type Json = Record<string, unknown> | unknown[] | string | number | boolean | null;
 
-function corsHeaders(req: Request, env: ShadowEnv) {
+function corsHeaders(req: Request, env: ShadowEnv): Record<string, string> {
   const origin = req.headers.get("origin");
   const allowed = env.SHADOW_ALLOWED_ORIGIN?.trim();
   if (!origin || !allowed || origin !== allowed) return {};
