@@ -6,22 +6,31 @@ on:
       - "src/shadow.ts"
       - "src/shadow-worker.ts"
       - "src/shadow-access.ts"
+      - "src/role-admin.ts"
       - "web-shadow/**"
       - "test/shadow.test.ts"
       - "test/shadow-access.test.ts"
+      - "test/role-admin.test.ts"
+      - "supabase/migrations/**"
       - "wrangler.shadow.toml.example"
       - ".github/workflows/v4-009-shadow-ci.yml"
   push:
     branches:
       - "v4-009-frontend-shadow"
       - "v4-009b-shadow-role-ux"
+      - "v4-009c-scoped-rbac"
+      - "v4-009d-org-structure"
+      - "v4-009e-role-administration"
     paths:
       - "src/shadow.ts"
       - "src/shadow-worker.ts"
       - "src/shadow-access.ts"
+      - "src/role-admin.ts"
       - "web-shadow/**"
       - "test/shadow.test.ts"
       - "test/shadow-access.test.ts"
+      - "test/role-admin.test.ts"
+      - "supabase/migrations/**"
       - "wrangler.shadow.toml.example"
       - ".github/workflows/v4-009-shadow-ci.yml"
 
@@ -58,3 +67,14 @@ jobs:
           grep -q '/v4/shadow/session' src/shadow-worker.ts
           grep -q 'SHADOW_PERMISSION_DENIED' src/shadow-access.ts
           grep -q 'role-ux.js' web-shadow/index.html
+      - name: Scoped role administration guards must be present
+        run: |
+          FILE=supabase/migrations/20260906024255_v4_009e_scoped_role_administration.sql
+          grep -q 'create or replace function public.assign_membership_role_v4' "$FILE"
+          grep -q 'create or replace function public.end_membership_role_v4' "$FILE"
+          grep -q 'security invoker' "$FILE"
+          grep -q 'LAST_OWNER_CANNOT_BE_ENDED' "$FILE"
+          grep -q 'OWNER_ROLE_REQUIRES_OWNER' "$FILE"
+          grep -q 'ROLE_ASSIGNMENT_HISTORY_IMMUTABLE' "$FILE"
+          grep -q 'revoke insert,update,delete on public.membership_roles from authenticated' "$FILE"
+          grep -q 'warehouses_scoped_select_v4' supabase/migrations/20260906024639_v4_009e_scope_catalog_rls_hardening.sql
