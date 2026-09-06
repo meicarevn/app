@@ -1,6 +1,7 @@
 import { HttpError, requestId } from "./lib";
 import { getShadowAccess, enforceShadowRoute, shadowOrganizationId } from "./shadow-access";
 import { handleShadowRead } from "./shadow";
+import { handleMemberAdminRead } from "./member-admin-read";
 
 export interface ShadowEnv {
   SUPABASE_URL: string;
@@ -73,7 +74,15 @@ export default {
         }
 
         enforceShadowRoute(url.pathname, access);
-        const body = await handleShadowRead(req, env, rid) as Json;
+        const memberAdminPaths = new Set([
+          "/v4/shadow/members",
+          "/v4/shadow/member-history",
+          "/v4/shadow/role-catalog",
+          "/v4/shadow/scopes"
+        ]);
+        const body = memberAdminPaths.has(url.pathname)
+          ? await handleMemberAdminRead(req, env, rid, org) as Json
+          : await handleShadowRead(req, env, rid) as Json;
         return json(req, env, body, 200, rid);
       }
 
