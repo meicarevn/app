@@ -1,0 +1,112 @@
+name: V4_011E Global Frontend Readiness Gate
+
+on:
+  push:
+    branches:
+      - v4-011e-global-frontend-readiness-gate
+    paths:
+      - "src/v4-011e-frontend-readiness-gate.ts"
+      - "test/v4-011e-frontend-readiness-gate.test.ts"
+      - "docs/V4_011E_GLOBAL_FRONTEND_READINESS_GATE.md"
+      - ".github/workflows/v4-011e-frontend-readiness-gate.yml"
+  pull_request:
+    branches:
+      - v4-011d-read-path-promotion-exec
+    paths:
+      - "src/v4-011e-frontend-readiness-gate.ts"
+      - "test/v4-011e-frontend-readiness-gate.test.ts"
+      - "docs/V4_011E_GLOBAL_FRONTEND_READINESS_GATE.md"
+      - ".github/workflows/v4-011e-frontend-readiness-gate.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  readiness-gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Typecheck and all tests
+        run: |
+          npm run check
+          npm test
+
+      - name: Dedicated V4_011E gate tests
+        run: npx vitest run test/v4-011e-frontend-readiness-gate.test.ts
+
+      - name: Preparation diff whitelist
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin v4-011d-read-path-promotion-exec
+          allowed='^(src/v4-011e-frontend-readiness-gate\.ts|test/v4-011e-frontend-readiness-gate\.test\.ts|docs/V4_011E_GLOBAL_FRONTEND_READINESS_GATE\.md|\.github/workflows/v4-011e-frontend-readiness-gate\.yml)$'
+          changed=$(git diff --name-only origin/v4-011d-read-path-promotion-exec...HEAD)
+          printf '%s\n' "$changed"
+          unexpected=$(printf '%s\n' "$changed" | grep -Ev "$allowed" || true)
+          if [ -n "$unexpected" ]; then
+            echo "Unexpected file(s) in V4_011E preparation diff:"
+            printf '%s\n' "$unexpected"
+            exit 1
+          fi
+
+      - name: Fail-closed static guards
+        shell: bash
+        run: |
+          set -euo pipefail
+          SRC=src/v4-011e-frontend-readiness-gate.ts
+          TEST=test/v4-011e-frontend-readiness-gate.test.ts
+          DOC=docs/V4_011E_GLOBAL_FRONTEND_READINESS_GATE.md
+          WF=.github/workflows/v4-011e-frontend-readiness-gate.yml
+
+          grep -q 'global_production_mutation_authorized: false' "$SRC"
+          grep -q 'BACKUP_RESTORE_EVIDENCE_REQUIRED' "$SRC"
+          grep -q 'SECURITY_DEBT_REMEDIATION_OR_RISK_ACCEPTANCE_REQUIRED' "$SRC"
+          grep -q 'FOUNDER_A_APPROVAL_REQUIRED' "$SRC"
+          grep -q 'FRONTEND_V4_READY_CHANGED_BEFORE_PROMOTION' "$SRC"
+          grep -q 'GLOBAL_PRODUCTION_ROUTE_CHANGED_DURING_PREPARATION' "$SRC"
+          grep -q 'ROUTE_ROLLBACK_EVIDENCE_REQUIRED' "$SRC"
+          grep -q 'global_production_mutation_authorized).toBe(false)' "$TEST"
+          grep -q 'GLOBAL PROMOTION BLOCKED' "$DOC"
+
+          if grep -Eiq 'SUPABASE_SERVICE_ROLE_KEY|sb_secret_' "$SRC" "$TEST" "$DOC" "$WF"; then
+            echo 'Forbidden service-role secret marker found'
+            exit 1
+          fi
+
+          if grep -Eiq 'wrangler[^[:cntrl:]]*deploy|pages[[:space:]]+deploy|cloudflare[^[:cntrl:]]*deploy' "$WF"; then
+            echo 'Deployment command found in preparation workflow'
+            exit 1
+          fi
+
+          if grep -Eiq 'frontend_v4_ready[[:space:]]*=[[:space:]]*true|frontend_v4_ready:[[:space:]]*true' "$DOC" "$WF"; then
+            echo 'Premature frontend readiness mutation marker found'
+            exit 1
+          fi
+
+          if find supabase/migrations -type f -newer "$SRC" 2>/dev/null | grep -q .; then
+            echo 'Unexpected migration activity detected'
+            exit 1
+          fi
+
+      - name: Gate summary
+        run: |
+          echo "### V4_011E Global Frontend Readiness Gate" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Preparation only: no global production deployment" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Current intended decision: BLOCKED" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Required before execution: backup/restore evidence" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Required before execution: security debt remediation or explicit scoped Founder A risk acceptance" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Required before execution: explicit Founder A global promotion approval" >> "$GITHUB_STEP_SUMMARY"
+          echo "- frontend_v4_ready remains false" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Inventory write mode and alert publish mode remain unchanged" >> "$GITHUB_STEP_SUMMARY"
