@@ -1,4 +1,5 @@
 import { HttpError, requestId } from "./lib";
+import { getShadowAccess, enforceShadowRoute, shadowOrganizationId } from "./shadow-access";
 import { handleShadowRead } from "./shadow";
 
 export interface ShadowEnv {
@@ -53,11 +54,25 @@ export default {
           status: "ok",
           service: "meicare-v4-shadow-read",
           mode: "SHADOW",
-          read_only: true
+          read_only: true,
+          rbac_gate: true
         }, 200, rid);
       }
 
       if (url.pathname.startsWith("/v4/shadow/")) {
+        if (req.method !== "GET") throw new HttpError(405, "METHOD_NOT_ALLOWED");
+        const org = shadowOrganizationId(req, url);
+        const access = await getShadowAccess(req, env, rid, org);
+
+        if (url.pathname === "/v4/shadow/session") {
+          return json(req, env, {
+            mode: "SHADOW",
+            read_only: true,
+            ...access
+          }, 200, rid);
+        }
+
+        enforceShadowRoute(url.pathname, access);
         const body = await handleShadowRead(req, env, rid) as Json;
         return json(req, env, body, 200, rid);
       }
