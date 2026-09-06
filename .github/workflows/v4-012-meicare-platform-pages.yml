@@ -59,8 +59,8 @@ jobs:
           grep -q 'METHOD_NOT_ALLOWED' 'shadow-pages/functions/v4/shadow/[[path]].ts'
           grep -q 'getShadowAccess' 'shadow-pages/functions/v4/shadow/[[path]].ts'
           grep -q 'enforceShadowRoute' 'shadow-pages/functions/v4/shadow/[[path]].ts'
-          if grep -R -n 'frontend_v4_ready[[:space:]]*=[[:space:]]*true' web-platform .github/workflows/v4-012-meicare-platform-pages.yml; then
-            echo "V4_012 must not set frontend_v4_ready=true"
+          if grep -R -n 'frontend_v4_ready[[:space:]]*=[[:space:]]*true' web-platform; then
+            echo "V4_012 frontend source must not set frontend_v4_ready=true"
             exit 1
           fi
 
