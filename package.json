@@ -1,0 +1,15 @@
+{
+  "name": "meicare-v4-gateway",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "check": "tsc --noEmit",
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20260905.0",
+    "typescript": "^5.9.2",
+    "wrangler": "^4.32.0"
+  }
+}

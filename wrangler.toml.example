@@ -1,0 +1,16 @@
+name = "meicare-v4-gateway"
+main = "src/index.ts"
+compatibility_date = "2026-09-05"
+
+[vars]
+SUPABASE_URL = "https://YOUR_PROJECT.supabase.co"
+R2_BUCKET_NAME = "meicare-evidence"
+
+[[r2_buckets]]
+binding = "EVIDENCE_BUCKET"
+bucket_name = "meicare-evidence"
+
+# Configure as encrypted secrets, never as vars:
+# SUPABASE_SERVICE_ROLE_KEY
+# SUPABASE_ANON_KEY
+# GATEWAY_ADMIN_TOKEN
