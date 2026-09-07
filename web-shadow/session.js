@@ -13,6 +13,26 @@
   };
   let refreshPromise = null;
 
+  function hasSession() {
+    return Boolean(sessionStorage.getItem(keys.accessToken) && sessionStorage.getItem(keys.refreshToken));
+  }
+
+  function updateNetworkStatus() {
+    const offline = navigator.onLine === false;
+    document.querySelectorAll("[data-network-status]").forEach((node) => {
+      node.hidden = !offline;
+      node.textContent = offline
+        ? "Thiết bị đang ngoại tuyến. Dữ liệu hiện tại được giữ lại; MEICARE sẽ thử lại khi có mạng."
+        : "";
+    });
+  }
+
+  function redirectToLogin(reason = "session_expired") {
+    const url = new URL("./login", location.href);
+    url.searchParams.set("reason", reason);
+    location.replace(url.toString());
+  }
+
   function clear() {
     Object.values(keys).forEach((key) => sessionStorage.removeItem(key));
   }
@@ -53,7 +73,10 @@
     if (!refreshToken) throw new Error("SESSION_EXPIRED");
     refreshPromise = authToken("refresh_token", { refresh_token: refreshToken })
       .catch((error) => {
-        clear();
+        if (["AUTH_INVALID_CREDENTIALS", "AUTH_401", "AUTH_403"].includes(error?.message)) {
+          clear();
+          window.dispatchEvent(new CustomEvent("meicare:session-expired"));
+        }
         throw error;
       })
       .finally(() => { refreshPromise = null; });
@@ -157,11 +180,17 @@
     authorizedFetch,
     cachedOrganizations,
     clear,
+    hasSession,
     organizations,
+    redirectToLogin,
     refresh,
     selectedOrganizationId,
     selectOrganization,
     signIn,
     signOut
   };
+
+  window.addEventListener("online", updateNetworkStatus);
+  window.addEventListener("offline", updateNetworkStatus);
+  updateNetworkStatus();
 })();

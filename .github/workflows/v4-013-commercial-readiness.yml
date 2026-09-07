@@ -21,6 +21,8 @@ jobs:
       PROJECT_NAME: meicare-platform
       PREVIEW_BRANCH: v4-013-commercial-readiness
       PREVIEW_URL: https://v4-013-commercial-readiness.meicare-platform.pages.dev
+      BASELINE_URL: https://meicare-platform.pages.dev
+      ROLLBACK_URL: https://meicare-smart-pharmacy.pages.dev
       CANARY_ORG_ID: 68d83220-4e5d-46e7-8bd3-7863205985f4
     steps:
       - uses: actions/checkout@v4
@@ -37,6 +39,7 @@ jobs:
         run: |
           npm run check
           npm test
+          npm audit --audit-level=high
           for file in web-shadow/*.js; do node --check "$file"; done
 
       - name: Commercial safety guards
@@ -68,20 +71,14 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          rm -rf platform-pages
           mkdir -p platform-pages/public platform-pages/functions
           cp -R web-shadow/. platform-pages/public/
           cp -R shadow-pages/functions/. platform-pages/functions/
           cp web-platform/index.html platform-pages/public/index.html
           cp web-platform/platform.css platform-pages/public/platform.css
-          cat > platform-pages/public/_headers <<'EOF'
-          /*
-            X-Robots-Tag: noindex, nofollow
-            Referrer-Policy: strict-origin-when-cross-origin
-            X-Content-Type-Options: nosniff
-            X-Frame-Options: DENY
-            Permissions-Policy: camera=(), microphone=(), geolocation=()
-          EOF
+          cp web-platform/_headers platform-pages/public/_headers
+          test -f platform-pages/public/404.html
+          test -f platform-pages/public/_headers
 
       - name: Cloudflare preview credential status
         id: cf
@@ -129,12 +126,39 @@ jobs:
           wait_for "login" GET "$PREVIEW_URL/login" 200 'V4_013 · COMMERCIAL READINESS' /tmp/login.html
           wait_for "organizations unauthenticated" GET "$PREVIEW_URL/v4/shadow/organizations" 401 'UNAUTHORIZED' /tmp/organizations.json
           wait_for "shadow mutation blocked" POST "$PREVIEW_URL/v4/shadow/organizations" 405 'METHOD_NOT_ALLOWED' /tmp/mutation.json
+          wait_for "route fallback" GET "$PREVIEW_URL/not-a-real-route-v4-013b" 404 'Không tìm thấy trang' /tmp/not-found.html
+
+          curl -sS -D /tmp/platform.headers -o /dev/null "$PREVIEW_URL/"
+          grep -Eiq '^content-security-policy:' /tmp/platform.headers
+          grep -Eiq '^x-frame-options:[[:space:]]*DENY' /tmp/platform.headers
+          grep -Eiq '^x-content-type-options:[[:space:]]*nosniff' /tmp/platform.headers
+          grep -Eiq '^permissions-policy:' /tmp/platform.headers
+          grep -Eiq '^x-robots-tag:[[:space:]]*noindex, nofollow' /tmp/platform.headers
+
+          curl -sS -D /tmp/function.headers -o /dev/null "$PREVIEW_URL/v4/shadow/organizations"
+          grep -Eiq '^content-security-policy:' /tmp/function.headers
+          grep -Eiq '^x-frame-options:[[:space:]]*DENY' /tmp/function.headers
+          grep -Eiq '^permissions-policy:' /tmp/function.headers
+
+      - name: Rollback isolation evidence
+        if: steps.cf.outputs.ready == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          baseline_status=$(curl -sS -o /tmp/baseline.html -w '%{http_code}' "$BASELINE_URL/")
+          rollback_status=$(curl -sS -o /tmp/rollback.html -w '%{http_code}' "$ROLLBACK_URL/")
+          test "$baseline_status" = "200"
+          test "$rollback_status" = "200"
+          grep -q 'MEICARE PLATFORM · V4' /tmp/baseline.html
+          echo "baseline=$baseline_status rollback=$rollback_status"
 
       - name: Summary
         if: always()
         run: |
-          echo "### V4_013A Commercial Session Foundation" >> "$GITHUB_STEP_SUMMARY"
+          echo "### V4_013B Frontend Hardening" >> "$GITHUB_STEP_SUMMARY"
           echo "- Target: isolated preview branch only" >> "$GITHUB_STEP_SUMMARY"
           echo "- Existing production and rollback projects: untouched" >> "$GITHUB_STEP_SUMMARY"
           echo "- Runtime/cutover/readiness flags: unchanged" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Static and function security headers: validated" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Route fallback and rollback reachability: validated" >> "$GITHUB_STEP_SUMMARY"
           echo "- Cloudflare preview attempted: ${{ steps.cf.outputs.ready }}" >> "$GITHUB_STEP_SUMMARY"

@@ -21,10 +21,16 @@
     .actions{display:flex;gap:10px;flex-wrap:wrap}
     .notice{margin-top:16px}
     .small{font-size:.9rem;opacity:.82}
+    .network-banner{position:fixed;inset:auto 16px 16px;z-index:100;padding:10px 16px;background:#fff8db;color:#6f5100;text-align:center;font-weight:700;border:1px solid #f0d777;border-radius:12px;box-shadow:var(--shadow)}
+    button:disabled{cursor:wait;opacity:.65}
+    :focus-visible{outline:3px solid color-mix(in srgb,var(--accent) 55%,white);outline-offset:3px}
     @media(max-width:560px){body{padding:16px}.login-card{padding:22px}.actions>*{flex:1 1 100%}}
+    @media(max-height:620px){body{place-items:start center}.login-card{margin-block:12px}}
+    @media(prefers-reduced-motion:reduce){*{scroll-behavior:auto!important}}
   </style>
 </head>
 <body>
+  <div class="network-banner" data-network-status role="status" hidden></div>
   <main class="login-card">
     <p class="eyebrow">V4_013 · COMMERCIAL READINESS</p>
     <h1>Đăng nhập MEICARE</h1>

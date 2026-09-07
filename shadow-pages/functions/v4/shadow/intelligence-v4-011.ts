@@ -55,6 +55,11 @@ function json(body: unknown, status: number, rid: string) {
       "cache-control": "no-store",
       "x-content-type-options": "nosniff",
       "x-frame-options": "DENY",
+      "referrer-policy": "no-referrer",
+      "permissions-policy": "camera=(), microphone=(), geolocation=(), payment=(), usb=()",
+      "cross-origin-opener-policy": "same-origin",
+      "cross-origin-resource-policy": "same-origin",
+      "strict-transport-security": "max-age=31536000; includeSubDomains",
       "content-security-policy": "default-src 'none'; frame-ancestors 'none'",
       "x-request-id": rid,
       "x-meicare-read-path": "V4_011D_DB_PROJECTION"

@@ -29,6 +29,7 @@
   const connectionDialog = document.getElementById("connectionDialog");
   const orgInput = document.getElementById("orgInput");
   const connectionButton = document.getElementById("connectionButton");
+  let hasRenderedView = false;
 
   function escapeHtml(value) {
     return String(value ?? "")
@@ -132,9 +133,43 @@
   }
 
   function showError(error) {
+    const code = String(error?.message || "UNKNOWN_ERROR");
+    if (["UNAUTHORIZED", "SESSION_REQUIRED", "SESSION_EXPIRED", "AUTH_INVALID_CREDENTIALS"].includes(code)) {
+      window.MEICARE_SESSION.clear();
+      window.MEICARE_SESSION.redirectToLogin("session_expired");
+      return;
+    }
+
+    const messages = {
+      SHADOW_PERMISSION_DENIED: "Tài khoản không có quyền xem nội dung này.",
+      SHADOW_SCOPE_DENIED: "Vai trò hiện tại không có phạm vi toàn bệnh viện cho nội dung này.",
+      NO_ACTIVE_ORGANIZATION_ROLE: "Tài khoản không còn vai trò hiệu lực tại bệnh viện đã chọn.",
+      SHADOW_ACCESS_READ_FAILED: "Không thể xác minh quyền truy cập. Vui lòng thử lại.",
+      SHADOW_PREVIEW_FAILED: "Dịch vụ dữ liệu tạm thời không khả dụng.",
+      V4_011_SHADOW_READ_FAILED: "Không thể tải mô hình phân tích kho lúc này.",
+      FAILED_TO_FETCH: "Không thể kết nối tới MEICARE. Hãy kiểm tra mạng và thử lại."
+    };
+    const normalized = navigator.onLine === false || /failed to fetch|networkerror|load failed/i.test(code)
+      ? "FAILED_TO_FETCH"
+      : code;
+    const message = messages[normalized] || (code.startsWith("HTTP_5") ? "Dịch vụ tạm thời không khả dụng." : "Không thể tải dữ liệu lúc này.");
     errorNotice.hidden = false;
     const rid = error?.requestId ? ` · Request ${escapeHtml(error.requestId)}` : "";
-    errorNotice.innerHTML = `<strong>Không tải được Shadow data.</strong><span>${escapeHtml(error?.message || error)}${rid}</span>`;
+    const chooseOrganization = ["SHADOW_PERMISSION_DENIED", "SHADOW_SCOPE_DENIED", "NO_ACTIVE_ORGANIZATION_ROLE"].includes(code);
+    errorNotice.innerHTML = `
+      <div class="notice-copy"><strong>Chưa thể cập nhật dữ liệu.</strong><span>${escapeHtml(message)}${rid}</span></div>
+      <div class="notice-actions">
+        <button class="secondary-button" type="button" data-error-action="retry">Thử lại</button>
+        ${chooseOrganization ? '<button class="secondary-button" type="button" data-error-action="organization">Đổi bệnh viện</button>' : ""}
+      </div>`;
+    errorNotice.querySelector('[data-error-action="retry"]')?.addEventListener("click", load);
+    errorNotice.querySelector('[data-error-action="organization"]')?.addEventListener("click", async () => {
+      try {
+        await refreshOrganizations(true);
+      } catch (organizationError) {
+        showError(organizationError);
+      }
+    });
   }
 
   function clearError() {
@@ -326,8 +361,9 @@
       else if (state.view === "documents") await renderDocuments();
       else if (state.view === "compare") await renderCompare();
       else if (state.view === "readiness") await renderReadiness();
+      hasRenderedView = true;
     } catch (error) {
-      root.innerHTML = empty();
+      if (!hasRenderedView) root.innerHTML = empty();
       showError(error);
     } finally {
       loading.hidden = true;
@@ -348,8 +384,8 @@
   connectionButton.addEventListener("click", async () => {
     try {
       await refreshOrganizations(true);
-    } catch {
-      location.replace("./login");
+    } catch (error) {
+      showError(error);
     }
   });
 
@@ -365,11 +401,24 @@
 
   document.getElementById("logoutButton").addEventListener("click", async () => {
     await window.MEICARE_SESSION.signOut();
-    location.replace("./login");
+    window.MEICARE_SESSION.redirectToLogin("signed_out");
+  });
+
+  window.addEventListener("meicare:session-expired", () => {
+    window.MEICARE_SESSION.redirectToLogin("session_expired");
+  });
+  window.addEventListener("online", () => {
+    if (configured()) load();
   });
 
   updateConnectionNotice();
   refreshOrganizations()
     .then(load)
-    .catch(() => location.replace("./login"));
+    .catch((error) => {
+      if (["SESSION_REQUIRED", "SESSION_EXPIRED", "UNAUTHORIZED"].includes(error?.message)) {
+        window.MEICARE_SESSION.redirectToLogin("session_expired");
+        return;
+      }
+      showError(error);
+    });
 })();

@@ -58,6 +58,8 @@ It does not change Supabase schema, RLS, IAM, secrets, runtime modes, production
 
 ## V4_013A acceptance
 
+Status: **PASS** — accepted by the product owner after isolated-preview review.
+
 1. TypeScript check and all tests pass.
 2. Browser assets contain no service-role/secret key marker.
 3. Browser assets contain no hard-coded production organization ID.
@@ -67,6 +69,30 @@ It does not change Supabase schema, RLS, IAM, secrets, runtime modes, production
 7. Logout uses local scope and clears the tab session even when the network call fails.
 8. Preview deployment targets only the V4_013 branch of `meicare-platform`.
 
+## Increment V4_013B — Frontend hardening
+
+This increment keeps the same authenticated, read-only boundary while making the pilot interface safer under ordinary commercial operating conditions. It adds:
+
+- session-expiry messaging and deterministic redirect to login;
+- retryable network/service errors without discarding the last successfully rendered view;
+- an offline banner and automatic retry after connectivity returns;
+- a branded static 404 fallback;
+- phone, tablet, keyboard-focus, reduced-motion, and dark-mode refinements;
+- restrictive headers for both static assets and Pages Function responses;
+- CI smoke checks for security headers, unknown routes, baseline availability, and rollback availability.
+
+## V4_013B acceptance
+
+1. TypeScript, unit/static tests, browser JavaScript syntax checks, and dependency audit pass.
+2. Static pages and Pages Functions emit the required security headers.
+3. An unknown preview route returns the branded 404 with HTTP 404.
+4. Expired sessions return to login with a clear explanation.
+5. Transient failures preserve the last rendered data and offer an explicit retry.
+6. Phone/tablet layouts retain organization selection, navigation, and logout.
+7. Keyboard focus and reduced-motion preferences are supported.
+8. CI proves both the unchanged baseline project and the rollback project remain reachable.
+9. Human acceptance occurs only on the isolated V4_013 preview.
+
 ## Promotion rule
 
-V4_013A may be merged or deployed only as an isolated preview after automated checks and authenticated human acceptance. It cannot authorize commercial go-live or any readiness/cutover mutation.
+Each V4_013 increment may be merged or deployed only as an isolated preview after automated checks and authenticated human acceptance. It cannot authorize commercial go-live or any readiness/cutover mutation.
