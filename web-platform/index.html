@@ -25,8 +25,8 @@
       <span class="shadow-badge platform-badge">MEICARE PLATFORM · V4</span>
       <span class="platform-stage-badge">PRE-PRODUCTION · READ ONLY</span>
       <a id="memberAdminLink" class="secondary-button" href="./member-admin" hidden>Thành viên</a>
-      <a class="secondary-button" href="./login">Đăng nhập</a>
-      <button id="connectionButton" class="secondary-button" type="button">Kết nối</button>
+      <button id="connectionButton" class="secondary-button" type="button">Chọn bệnh viện</button>
+      <button id="logoutButton" class="secondary-button" type="button">Đăng xuất</button>
     </div>
   </header>
 
@@ -62,8 +62,8 @@
       </section>
 
       <section id="connectionNotice" class="notice warning" hidden>
-        <strong>Chưa cấu hình kết nối.</strong>
-        <span>Dùng “Đăng nhập” để xác thực bằng tài khoản Supabase hiện tại; không nhập service-role key.</span>
+        <strong>Chưa chọn bệnh viện.</strong>
+        <span>MEICARE chỉ hiển thị những bệnh viện mà tài khoản hiện tại đang có quyền truy cập.</span>
       </section>
 
       <section id="scopeNotice" class="notice warning" hidden>
@@ -80,27 +80,19 @@
     <form method="dialog" id="connectionForm">
       <div class="dialog-heading">
         <div>
-          <p class="eyebrow">MEICARE Platform connection</p>
-          <h2>Kết nối V4 read gateway</h2>
+          <p class="eyebrow">Phạm vi làm việc</p>
+          <h2>Chọn bệnh viện</h2>
         </div>
         <button class="icon-button" value="cancel" aria-label="Đóng" type="submit">×</button>
       </div>
-      <p class="muted">Thông tin chỉ được giữ trong <code>sessionStorage</code> của tab này. Không dùng service-role key.</p>
+      <p class="muted">Danh sách được xác định từ membership và RLS của tài khoản. Không nhập UUID hoặc access token thủ công.</p>
       <label>
-        Gateway URL
-        <input id="gatewayInput" name="gateway" type="url" placeholder="https://meicare-platform.pages.dev" autocomplete="off" required />
-      </label>
-      <label>
-        Organization ID
-        <input id="orgInput" name="organization" type="text" placeholder="UUID" autocomplete="off" required />
-      </label>
-      <label>
-        Supabase access token
-        <textarea id="tokenInput" name="token" rows="4" placeholder="eyJ…" autocomplete="off" required></textarea>
+        Bệnh viện / Tổ chức
+        <select id="orgInput" name="organization" required></select>
       </label>
       <div class="dialog-actions">
         <button class="secondary-button" value="cancel" type="submit">Huỷ</button>
-        <button id="saveConnectionButton" class="primary-button" value="default" type="button">Lưu phiên</button>
+        <button id="saveConnectionButton" class="primary-button" value="default" type="button">Tiếp tục</button>
       </div>
     </form>
   </dialog>
@@ -112,6 +104,7 @@
     </div>
   </template>
 
+  <script src="./session.js" defer></script>
   <script src="./app.js" defer></script>
   <script src="./role-ux.js" defer></script>
 </body>

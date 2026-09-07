@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta name="color-scheme" content="light dark" />
   <meta name="robots" content="noindex,nofollow" />
-  <title>MEICARE V4 Shadow Preview Login</title>
+  <title>Đăng nhập MEICARE Platform</title>
   <link rel="stylesheet" href="./styles.css" />
   <style>
     [hidden]{display:none!important}
@@ -26,20 +26,21 @@
 </head>
 <body>
   <main class="login-card">
-    <p class="eyebrow">V4_010 · ISOLATED SHADOW PREVIEW</p>
-    <h1>Đăng nhập MEICARE Shadow</h1>
-    <p>Chỉ dùng tài khoản Supabase hiện tại. Mật khẩu không được lưu; access token chỉ nằm trong <code>sessionStorage</code> của tab này và không có service-role key.</p>
+    <p class="eyebrow">V4_013 · COMMERCIAL READINESS</p>
+    <h1>Đăng nhập MEICARE</h1>
+    <p>Dùng tài khoản đã được bệnh viện cấp quyền. MEICARE tự xác định bệnh viện và vai trò hiệu lực; người dùng không cần nhập mã tổ chức hoặc access token.</p>
     <form id="loginForm">
       <label>Email<input id="email" type="email" autocomplete="username" required /></label>
       <label>Mật khẩu<input id="password" type="password" autocomplete="current-password" required /></label>
       <div class="actions">
-        <button class="primary-button" type="submit">Đăng nhập preview</button>
-        <button class="secondary-button" id="clearSession" type="button">Xoá phiên preview</button>
+        <button class="primary-button" type="submit">Đăng nhập</button>
+        <button class="secondary-button" id="clearSession" type="button">Đăng xuất thiết bị này</button>
       </div>
     </form>
     <section id="message" class="notice" hidden aria-live="polite"></section>
-    <p class="small">Preview này chỉ đọc. Runtime production, inventory write mode và alert publication không được thay đổi từ giao diện này.</p>
+    <p class="small">V4_013 vẫn vận hành ở chế độ pre-production, chỉ đọc. Mọi quyền dữ liệu tiếp tục được kiểm soát bởi Supabase RLS.</p>
   </main>
+  <script src="./session.js" defer></script>
   <script src="./login.js" defer></script>
 </body>
 </html>

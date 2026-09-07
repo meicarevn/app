@@ -151,7 +151,7 @@ dialog::backdrop { background: rgba(8, 18, 33, .52); backdrop-filter: blur(4px);
 dialog form { padding: 22px; }
 .dialog-heading { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; margin-bottom: 10px; }
 dialog label { display: grid; gap: 7px; margin-top: 15px; font-size: 13px; font-weight: 700; }
-dialog input, dialog textarea { width: 100%; border: 1px solid var(--border); border-radius: 11px; padding: 10px 12px; background: var(--surface-2); color: var(--text); resize: vertical; }
+dialog input, dialog textarea, dialog select { width: 100%; min-height: 44px; border: 1px solid var(--border); border-radius: 11px; padding: 10px 12px; background: var(--surface-2); color: var(--text); resize: vertical; }
 .dialog-actions { display: flex; justify-content: flex-end; gap: 9px; margin-top: 20px; }
 .muted { color: var(--muted); }
 
@@ -165,6 +165,8 @@ dialog input, dialog textarea { width: 100%; border: 1px solid var(--border); bo
 @media (max-width: 760px) {
   .topbar { min-height: 64px; }
   .brand span { display: none; }
+  .topbar-actions { gap: 6px; }
+  #connectionButton { max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .shadow-badge { font-size: 10px; padding-inline: 8px; }
   .app-shell { display: block; padding-top: 64px; }
   .sidebar {
@@ -185,6 +187,8 @@ dialog input, dialog textarea { width: 100%; border: 1px solid var(--border); bo
   .brand strong { font-size: 13px; }
   .brand-mark { width: 36px; height: 36px; border-radius: 11px; }
   .secondary-button { padding-inline: 10px; }
+  #logoutButton { font-size: 0; width: 40px; padding: 0; }
+  #logoutButton::before { content: "↪"; font-size: 18px; }
   .metrics-grid { grid-template-columns: 1fr; }
   .page-heading { display: grid; }
   .page-actions, .page-actions button { width: 100%; }

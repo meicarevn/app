@@ -4,8 +4,7 @@
   const config = window.MEICARE_SHADOW_CONFIG || {};
   const state = {
     gateway: config.gatewayUrl || sessionStorage.getItem("meicare.shadow.gateway") || location.origin,
-    organizationId: config.organizationId || sessionStorage.getItem("meicare.shadow.organization") || "",
-    token: config.accessToken || sessionStorage.getItem("meicare.shadow.token") || ""
+    organizationId: config.organizationId || window.MEICARE_SESSION.selectedOrganizationId()
   };
 
   const statusBox = document.getElementById("statusBox");
@@ -78,15 +77,14 @@
   }
 
   async function api(path, params = {}) {
-    if (!state.organizationId || !state.token) throw new Error("PREVIEW_SESSION_REQUIRED");
+    if (!state.organizationId) throw new Error("PREVIEW_SESSION_REQUIRED");
     const base = state.gateway.replace(/\/+$/, "");
     const url = new URL(`${base}${path}`);
     url.searchParams.set("organization_id", state.organizationId);
     for (const [key, value] of Object.entries(params)) url.searchParams.set(key, String(value));
-    const response = await fetch(url.toString(), {
+    const response = await window.MEICARE_SESSION.authorizedFetch(url.toString(), {
       method: "GET",
       headers: {
-        authorization: `Bearer ${state.token}`,
         "x-organization-id": state.organizationId,
         "x-request-id": crypto.randomUUID()
       },

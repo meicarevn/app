@@ -1,0 +1,140 @@
+name: V4_013 Commercial Readiness Preview
+
+on:
+  push:
+    branches:
+      - v4-013-commercial-readiness
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: v4-013-commercial-readiness-preview
+  cancel-in-progress: false
+
+jobs:
+  validate-and-preview:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      PROJECT_NAME: meicare-platform
+      PREVIEW_BRANCH: v4-013-commercial-readiness
+      PREVIEW_URL: https://v4-013-commercial-readiness.meicare-platform.pages.dev
+      CANARY_ORG_ID: 68d83220-4e5d-46e7-8bd3-7863205985f4
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install pinned dependencies
+        run: npm ci
+
+      - name: Validate application
+        run: |
+          npm run check
+          npm test
+          for file in web-shadow/*.js; do node --check "$file"; done
+
+      - name: Commercial safety guards
+        shell: bash
+        run: |
+          set -euo pipefail
+          if grep -R -Eiq 'SUPABASE_SERVICE_ROLE_KEY|sb_secret_|service_role' web-platform web-shadow shadow-pages/functions; then
+            echo "Forbidden service credential marker found in browser or Pages source"
+            exit 1
+          fi
+          if grep -R -n "$CANARY_ORG_ID" web-platform web-shadow; then
+            echo "A production organization id is hard-coded in a browser asset"
+            exit 1
+          fi
+          if grep -R -Einq 'Supabase access token|placeholder="UUID"|Gateway URL' web-platform web-shadow; then
+            echo "Manual credential or organization connection UI remains"
+            exit 1
+          fi
+          grep -q '/v4/shadow/organizations' 'shadow-pages/functions/v4/shadow/[[path]].ts'
+          grep -q 'refresh_token' web-shadow/session.js
+          grep -q 'logout?scope=local' web-shadow/session.js
+          grep -q 'PRE-PRODUCTION · READ ONLY' web-platform/index.html
+          if grep -R -n 'frontend_v4_ready[[:space:]]*=[[:space:]]*true' web-platform web-shadow src; then
+            echo "V4_013 must not mutate frontend_v4_ready"
+            exit 1
+          fi
+
+      - name: Assemble isolated Pages preview
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf platform-pages
+          mkdir -p platform-pages/public platform-pages/functions
+          cp -R web-shadow/. platform-pages/public/
+          cp -R shadow-pages/functions/. platform-pages/functions/
+          cp web-platform/index.html platform-pages/public/index.html
+          cp web-platform/platform.css platform-pages/public/platform.css
+          cat > platform-pages/public/_headers <<'EOF'
+          /*
+            X-Robots-Tag: noindex, nofollow
+            Referrer-Policy: strict-origin-when-cross-origin
+            X-Content-Type-Options: nosniff
+            X-Frame-Options: DENY
+            Permissions-Policy: camera=(), microphone=(), geolocation=()
+          EOF
+
+      - name: Cloudflare preview credential status
+        id: cf
+        env:
+          CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CF_ACCOUNT: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        shell: bash
+        run: |
+          if [ -n "${CF_TOKEN:-}" ] && [ -n "${CF_ACCOUNT:-}" ]; then
+            echo "::add-mask::$CF_TOKEN"
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Deploy isolated V4_013 preview
+        if: steps.cf.outputs.ready == 'true'
+        working-directory: platform-pages
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          npx wrangler pages deploy public \
+            --project-name "$PROJECT_NAME" \
+            --branch "$PREVIEW_BRANCH" \
+            --commit-hash "$GITHUB_SHA" \
+            --commit-dirty=true
+
+      - name: Unauthenticated preview smoke
+        if: steps.cf.outputs.ready == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          wait_for() {
+            local label="$1" method="$2" url="$3" expected="$4" marker="$5" body="$6"
+            for attempt in $(seq 1 18); do
+              code=$(curl -sS -X "$method" -o "$body" -w '%{http_code}' "$url" || true)
+              echo "$label attempt=$attempt status=$code"
+              if [ "$code" = "$expected" ] && grep -q "$marker" "$body"; then return 0; fi
+              if [ "$attempt" = "18" ]; then cat "$body" || true; return 1; fi
+              sleep 5
+            done
+          }
+          wait_for "platform" GET "$PREVIEW_URL/" 200 'MEICARE PLATFORM · V4' /tmp/platform.html
+          wait_for "login" GET "$PREVIEW_URL/login" 200 'V4_013 · COMMERCIAL READINESS' /tmp/login.html
+          wait_for "organizations unauthenticated" GET "$PREVIEW_URL/v4/shadow/organizations" 401 'UNAUTHORIZED' /tmp/organizations.json
+          wait_for "shadow mutation blocked" POST "$PREVIEW_URL/v4/shadow/organizations" 405 'METHOD_NOT_ALLOWED' /tmp/mutation.json
+
+      - name: Summary
+        if: always()
+        run: |
+          echo "### V4_013A Commercial Session Foundation" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Target: isolated preview branch only" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Existing production and rollback projects: untouched" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Runtime/cutover/readiness flags: unchanged" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Cloudflare preview attempted: ${{ steps.cf.outputs.ready }}" >> "$GITHUB_STEP_SUMMARY"

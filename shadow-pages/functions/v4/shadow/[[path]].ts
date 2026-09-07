@@ -1,6 +1,11 @@
 import { handleShadowRead } from "../../../../src/shadow";
 import { handleMemberAdminRead } from "../../../../src/member-admin-read";
-import { getShadowAccess, enforceShadowRoute, shadowOrganizationId } from "../../../../src/shadow-access";
+import {
+  getShadowAccess,
+  enforceShadowRoute,
+  listShadowOrganizations,
+  shadowOrganizationId
+} from "../../../../src/shadow-access";
 import { HttpError, requestId } from "../../../../src/lib";
 
 type Env = Record<string, never>;
@@ -41,6 +46,11 @@ async function handle(context: PagesContext) {
     if (req.method !== "GET") throw new HttpError(405, "METHOD_NOT_ALLOWED");
 
     const url = new URL(req.url);
+    if (url.pathname === "/v4/shadow/organizations") {
+      const organizations = await listShadowOrganizations(req, SHADOW_ENV, rid);
+      return json({ organizations }, 200, rid);
+    }
+
     const org = shadowOrganizationId(req, url);
     const access = await getShadowAccess(req, SHADOW_ENV, rid, org);
 

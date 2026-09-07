@@ -5,9 +5,8 @@
   const SUPABASE_ORIGIN = "https://sgxufmcsnveyyddazwuk.supabase.co";
   const APPROVED_V4_PATH = "/functions/v1/meicare-member-admin-v4";
   const state = {
-    gateway: boot.gatewayUrl || sessionStorage.getItem("meicare.shadow.gateway") || "",
-    organizationId: boot.organizationId || sessionStorage.getItem("meicare.shadow.organization") || "",
-    token: boot.accessToken || sessionStorage.getItem("meicare.shadow.token") || "",
+    gateway: boot.gatewayUrl || sessionStorage.getItem("meicare.shadow.gateway") || location.origin,
+    organizationId: boot.organizationId || window.MEICARE_SESSION.selectedOrganizationId(),
     mode: String(boot.memberAdminMode || sessionStorage.getItem("meicare.memberAdmin.mode") || "OFF").trim().toUpperCase(),
     memberAdminUrl: boot.memberAdminFunctionUrl || sessionStorage.getItem("meicare.memberAdmin.functionUrl") || `${SUPABASE_ORIGIN}${APPROVED_V4_PATH}`,
     legacyUrl: boot.legacyMemberAdminUrl || "",
@@ -68,11 +67,11 @@
   }
 
   async function shadowGet(path, params = {}) {
-    if (!state.gateway || !state.organizationId || !state.token) throw new Error("SHADOW_CONNECTION_REQUIRED");
+    if (!state.gateway || !state.organizationId) throw new Error("SHADOW_CONNECTION_REQUIRED");
     const url = new URL(`${state.gateway.replace(/\/+$/, "")}${path}`);
     url.searchParams.set("organization_id", state.organizationId);
     for (const [key, value] of Object.entries(params)) if (value) url.searchParams.set(key, String(value));
-    const res = await fetch(url, { method: "GET", headers: { authorization: `Bearer ${state.token}`, "x-organization-id": state.organizationId, "x-request-id": crypto.randomUUID() }, cache: "no-store" });
+    const res = await window.MEICARE_SESSION.authorizedFetch(url, { method: "GET", headers: { "x-organization-id": state.organizationId, "x-request-id": crypto.randomUUID() }, cache: "no-store" });
     const body = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(body.error || `HTTP_${res.status}`);
     return body;
@@ -88,10 +87,10 @@
 
   async function governedWrite(action, payload) {
     if (!canaryEnabled()) throw new Error(canaryReason() === "FLAG_OFF" ? "MEMBER_ADMIN_V4_CANARY_DISABLED" : "MEMBER_ADMIN_V4_ENDPOINT_NOT_APPROVED");
-    if (!state.token || !state.organizationId) throw new Error("AUTH_REQUIRED");
-    const res = await fetch(state.memberAdminUrl, {
+    if (!state.organizationId) throw new Error("AUTH_REQUIRED");
+    const res = await window.MEICARE_SESSION.authorizedFetch(state.memberAdminUrl, {
       method: "POST",
-      headers: { authorization: `Bearer ${state.token}`, "content-type": "application/json", "x-request-id": crypto.randomUUID(), "x-meicare-canary": "V4_009G" },
+      headers: { "content-type": "application/json", "x-request-id": crypto.randomUUID(), "x-meicare-canary": "V4_009G" },
       body: JSON.stringify({ action, organization_id: state.organizationId, ...payload }),
       cache: "no-store",
     });

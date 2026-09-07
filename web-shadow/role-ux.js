@@ -15,7 +15,6 @@
   const roleBadge = document.getElementById("roleBadge");
   const sessionContext = document.getElementById("sessionContext");
   const scopeNotice = document.getElementById("scopeNotice");
-  const saveConnectionButton = document.getElementById("saveConnectionButton");
   const memberAdminLink = document.getElementById("memberAdminLink");
 
   function escapeHtml(value) {
@@ -30,9 +29,8 @@
   function config() {
     const boot = window.MEICARE_SHADOW_CONFIG || {};
     return {
-      gateway: boot.gatewayUrl || sessionStorage.getItem("meicare.shadow.gateway") || "",
-      organizationId: boot.organizationId || sessionStorage.getItem("meicare.shadow.organization") || "",
-      token: boot.accessToken || sessionStorage.getItem("meicare.shadow.token") || ""
+      gateway: boot.gatewayUrl || location.origin,
+      organizationId: boot.organizationId || window.MEICARE_SESSION.selectedOrganizationId()
     };
   }
 
@@ -74,7 +72,7 @@
 
   async function refreshSession() {
     const current = config();
-    if (!current.gateway || !current.organizationId || !current.token) {
+    if (!current.gateway || !current.organizationId) {
       resetRoleUi();
       return;
     }
@@ -83,10 +81,9 @@
       const base = current.gateway.replace(/\/+$/, "");
       const url = new URL(`${base}/v4/shadow/session`);
       url.searchParams.set("organization_id", current.organizationId);
-      const response = await fetch(url.toString(), {
+      const response = await window.MEICARE_SESSION.authorizedFetch(url.toString(), {
         method: "GET",
         headers: {
-          authorization: `Bearer ${current.token}`,
           "x-organization-id": current.organizationId,
           "x-request-id": crypto.randomUUID()
         },
@@ -102,10 +99,7 @@
     }
   }
 
-  saveConnectionButton?.addEventListener("click", () => {
-    window.setTimeout(refreshSession, 150);
-  });
-
+  window.addEventListener("meicare:organization-changed", refreshSession);
   window.addEventListener("focus", refreshSession);
   refreshSession();
 })();

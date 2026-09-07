@@ -7,9 +7,8 @@
     limit: 50,
     offset: 0,
     inventoryStatus: "",
-    gateway: config.gatewayUrl || sessionStorage.getItem("meicare.shadow.gateway") || "",
-    organizationId: config.organizationId || sessionStorage.getItem("meicare.shadow.organization") || "",
-    token: config.accessToken || sessionStorage.getItem("meicare.shadow.token") || ""
+    gateway: config.gatewayUrl || location.origin,
+    organizationId: config.organizationId || window.MEICARE_SESSION.selectedOrganizationId()
   };
 
   const titles = {
@@ -28,9 +27,8 @@
   const errorNotice = document.getElementById("errorNotice");
   const connectionNotice = document.getElementById("connectionNotice");
   const connectionDialog = document.getElementById("connectionDialog");
-  const gatewayInput = document.getElementById("gatewayInput");
   const orgInput = document.getElementById("orgInput");
-  const tokenInput = document.getElementById("tokenInput");
+  const connectionButton = document.getElementById("connectionButton");
 
   function escapeHtml(value) {
     return String(value ?? "")
@@ -78,7 +76,7 @@
   }
 
   function configured() {
-    return Boolean(state.gateway && state.organizationId && state.token);
+    return Boolean(state.gateway && state.organizationId);
   }
 
   function updateConnectionNotice() {
@@ -96,10 +94,9 @@
     for (const [key, value] of Object.entries(params)) {
       if (value !== undefined && value !== null && value !== "") url.searchParams.set(key, String(value));
     }
-    const response = await fetch(url.toString(), {
+    const response = await window.MEICARE_SESSION.authorizedFetch(url.toString(), {
       method: "GET",
       headers: {
-        authorization: `Bearer ${state.token}`,
         "x-organization-id": state.organizationId,
         "x-request-id": crypto.randomUUID()
       },
@@ -112,6 +109,26 @@
       throw error;
     }
     return body;
+  }
+
+  function organizationLabel(organization) {
+    const suffix = organization.code ? ` · ${organization.code}` : "";
+    return `${organization.name || "Bệnh viện"}${suffix}`;
+  }
+
+  async function refreshOrganizations(openSelector = false) {
+    const organizations = await window.MEICARE_SESSION.organizations();
+    if (!organizations.length) throw new Error("NO_ACTIVE_ORGANIZATION_ROLE");
+    state.organizationId = window.MEICARE_SESSION.selectedOrganizationId();
+    orgInput.innerHTML = organizations.map((organization) => (
+      `<option value="${escapeHtml(organization.id)}" ${organization.id === state.organizationId ? "selected" : ""}>${escapeHtml(organizationLabel(organization))}</option>`
+    )).join("");
+
+    const selected = organizations.find((organization) => organization.id === state.organizationId);
+    connectionButton.textContent = selected ? organizationLabel(selected) : "Chọn bệnh viện";
+    updateConnectionNotice();
+    if (openSelector || (!state.organizationId && organizations.length > 1)) connectionDialog.showModal();
+    return organizations;
   }
 
   function showError(error) {
@@ -328,29 +345,31 @@
   });
 
   document.getElementById("refreshButton").addEventListener("click", load);
-  document.getElementById("connectionButton").addEventListener("click", () => {
-    gatewayInput.value = state.gateway;
-    orgInput.value = state.organizationId;
-    tokenInput.value = state.token;
-    connectionDialog.showModal();
+  connectionButton.addEventListener("click", async () => {
+    try {
+      await refreshOrganizations(true);
+    } catch {
+      location.replace("./login");
+    }
   });
 
   document.getElementById("saveConnectionButton").addEventListener("click", () => {
-    const gateway = gatewayInput.value.trim();
-    const organization = orgInput.value.trim();
-    const token = tokenInput.value.trim();
-    if (!gateway || !organization || !token) return;
-    state.gateway = gateway;
+    const organization = orgInput.value;
+    if (!organization) return;
+    window.MEICARE_SESSION.selectOrganization(organization);
     state.organizationId = organization;
-    state.token = token;
-    sessionStorage.setItem("meicare.shadow.gateway", gateway);
-    sessionStorage.setItem("meicare.shadow.organization", organization);
-    sessionStorage.setItem("meicare.shadow.token", token);
     connectionDialog.close();
     updateConnectionNotice();
     load();
   });
 
+  document.getElementById("logoutButton").addEventListener("click", async () => {
+    await window.MEICARE_SESSION.signOut();
+    location.replace("./login");
+  });
+
   updateConnectionNotice();
-  load();
+  refreshOrganizations()
+    .then(load)
+    .catch(() => location.replace("./login"));
 })();

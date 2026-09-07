@@ -1,5 +1,14 @@
-import { describe, expect, it } from "vitest";
-import { enforceShadowRoute, type ShadowAccess } from "../src/shadow-access";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { enforceShadowRoute, listShadowOrganizations, type ShadowAccess } from "../src/shadow-access";
+
+const env = {
+  SUPABASE_URL: "https://example.supabase.co",
+  SUPABASE_ANON_KEY: "publishable-test-key"
+};
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
 
 function access(
   permissions: string[],
@@ -82,5 +91,63 @@ describe("shadow route permission and scope gate", () => {
 
   it("does not invent a permission rule for unknown routes", () => {
     expect(() => enforceShadowRoute("/v4/shadow/not-a-real-route", access([]))).not.toThrow();
+  });
+});
+
+describe("commercial organization resolver", () => {
+  it("returns only active organizations visible through the caller's RLS session", async () => {
+    const userId = "00000000-0000-4000-8000-000000000001";
+    const orgA = "00000000-0000-4000-8000-000000000002";
+    const orgB = "00000000-0000-4000-8000-000000000003";
+    const fetchMock = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      const url = String(input);
+      expect(new Headers(init?.headers).get("authorization")).toBe("Bearer user-token");
+      if (url.endsWith("/auth/v1/user")) return Response.json({ id: userId });
+      if (url.includes("/rest/v1/membership_effective_roles_v4")) {
+        expect(url).toContain(`user_id=eq.${userId}`);
+        expect(url).toContain("is_current=eq.true");
+        return Response.json([
+          { organization_id: orgA, role_code: "PHARMACY_ADMIN" },
+          { organization_id: orgA, role_code: "VIEWER" },
+          { organization_id: orgB, role_code: "VIEWER" }
+        ]);
+      }
+      if (url.includes("/rest/v1/organizations")) {
+        expect(url).toContain("active=eq.true");
+        return Response.json([
+          { id: orgB, code: "BV-B", name: "Bệnh viện B" },
+          { id: orgA, code: "BV-A", name: "Bệnh viện A" }
+        ]);
+      }
+      throw new Error(`Unexpected fetch: ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const request = new Request("https://platform.example/v4/shadow/organizations", {
+      headers: { authorization: "Bearer user-token" }
+    });
+    await expect(listShadowOrganizations(request, env, "rid-organizations")).resolves.toEqual([
+      { id: orgA, code: "BV-A", name: "Bệnh viện A", roles: ["PHARMACY_ADMIN", "VIEWER"] },
+      { id: orgB, code: "BV-B", name: "Bệnh viện B", roles: ["VIEWER"] }
+    ]);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
+  it("returns an empty list when the user has no current assignment", async () => {
+    const fetchMock = vi.fn(async (input: string | URL | Request) => {
+      const url = String(input);
+      if (url.endsWith("/auth/v1/user")) {
+        return Response.json({ id: "00000000-0000-4000-8000-000000000001" });
+      }
+      if (url.includes("/rest/v1/membership_effective_roles_v4")) return Response.json([]);
+      throw new Error(`Unexpected fetch: ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const request = new Request("https://platform.example/v4/shadow/organizations", {
+      headers: { authorization: "Bearer user-token" }
+    });
+    await expect(listShadowOrganizations(request, env, "rid-empty")).resolves.toEqual([]);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 });

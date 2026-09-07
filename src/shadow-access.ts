@@ -55,6 +55,13 @@ export type ShadowAccess = {
   scope_warning: boolean;
 };
 
+export type ShadowOrganization = {
+  id: string;
+  code: string;
+  name: string;
+  roles: string[];
+};
+
 function bearer(req: Request) {
   const value = req.headers.get("authorization") || "";
   return value.startsWith("Bearer ") ? value.slice(7) : null;
@@ -184,6 +191,50 @@ export async function getShadowAccess(req: Request, env: ShadowAccessEnv, rid: s
     organization_scope: organizationScope,
     scope_warning: !organizationScope
   };
+}
+
+export async function listShadowOrganizations(
+  req: Request,
+  env: ShadowAccessEnv,
+  rid: string
+): Promise<ShadowOrganization[]> {
+  const { token, userId } = await authenticatedUser(req, env, rid);
+  const assignments = await restRows(env, token, rid, "membership_effective_roles_v4", {
+    user_id: `eq.${userId}`,
+    is_current: "eq.true",
+    select: "organization_id,role_code"
+  });
+
+  const organizationIds = [...new Set(
+    assignments
+      .map((row) => String(row.organization_id || ""))
+      .filter((value) => UUID_RE.test(value))
+  )];
+  if (!organizationIds.length) return [];
+
+  const organizations = await restRows(env, token, rid, "organizations", {
+    id: inFilter(organizationIds),
+    active: "eq.true",
+    select: "id,code,name"
+  });
+  const rolesByOrganization = new Map<string, Set<string>>();
+  for (const assignment of assignments) {
+    const organizationId = String(assignment.organization_id || "");
+    const roleCode = String(assignment.role_code || "").trim();
+    if (!UUID_RE.test(organizationId) || !roleCode) continue;
+    if (!rolesByOrganization.has(organizationId)) rolesByOrganization.set(organizationId, new Set());
+    rolesByOrganization.get(organizationId)!.add(roleCode);
+  }
+
+  return organizations
+    .map((row) => ({
+      id: String(row.id || ""),
+      code: String(row.code || ""),
+      name: String(row.name || row.code || "Tổ chức"),
+      roles: [...(rolesByOrganization.get(String(row.id || "")) || new Set<string>())].sort()
+    }))
+    .filter((row) => UUID_RE.test(row.id))
+    .sort((a, b) => a.name.localeCompare(b.name, "vi"));
 }
 
 export function enforceShadowRoute(pathname: string, access: ShadowAccess) {
