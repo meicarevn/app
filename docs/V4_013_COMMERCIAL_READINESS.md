@@ -97,6 +97,10 @@ Status: **PASS** — accepted by the product owner after deployed-preview review
 
 ## Increment V4_013C — Controlled VNPT-HIS contract foundation
 
+Status: **PASS** — accepted by the product owner after the automated contract,
+evidence and rollback-isolation gates. No live HIS connection, canonical
+inventory write, database migration or runtime-mode change was authorized.
+
 This increment hardens the existing HIS staging route without connecting a live hospital system or changing the database schema. It:
 
 - requires the versioned `MEICARE_HIS_INVENTORY_V1` envelope;
@@ -121,6 +125,16 @@ See `docs/V4_013C_VNPT_HIS_CONTRACT.md` for the complete contract and gate.
 7. R2 evidence succeeds before the staging RPC is called.
 8. The route still ends at staged reconciliation; no inventory event is committed.
 9. No Supabase schema, production route, readiness flag or live VNPT connection is changed by this increment.
+
+## Increment V4_013D — Privileged RPC boundary
+
+This increment packages a compatibility-preserving migration for the 13 public
+`SECURITY DEFINER` RPC warnings. Existing implementations move to `private`; the
+same public signatures become `SECURITY INVOKER` facades with explicit ACLs.
+
+The migration, acceptance query and rollback are committed for review but are not
+applied to production by this increment. Database activation requires a separate
+controlled approval, backup evidence, advisor rerun and role/tenant test gate.
 
 ## Promotion rule
 
