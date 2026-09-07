@@ -165,15 +165,21 @@ async function verifyIotSignature(
 }
 
 async function handleHisInventory(req: Request, env: Env, rid: string) {
+  const contentType = req.headers.get("content-type")?.split(";", 1)[0]?.trim().toLowerCase();
+  if (contentType !== "application/json") throw new HttpError(415, "CONTENT_TYPE_JSON_REQUIRED");
   const connectionId = req.headers.get("x-meicare-connection-id")?.trim();
   const apiKey = req.headers.get("x-meicare-api-key")?.trim();
   if (!connectionId || !apiKey) throw new HttpError(401, "HIS_CREDENTIALS_REQUIRED");
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(connectionId)) {
+    throw new HttpError(400, "HIS_CONNECTION_ID_INVALID");
+  }
   validateFreshUnixSeconds(req.headers.get("x-meicare-timestamp"));
   const idempotencyKey = validIdempotencyKey(req.headers.get("x-idempotency-key"));
   const bytes = await readBody(req, LIMITS.hisJsonBytes);
   const bodyHash = await sha256Hex(bytes);
   const body = parseJsonObject(bytes);
   const validated = validateHisPayload(body);
+  if (validated.batchId !== idempotencyKey) throw new HttpError(400, "HIS_BATCH_IDEMPOTENCY_MISMATCH");
 
   const auth = await rpc(env, "authenticate_his_connection_v2", {
     p_connection_id: connectionId,
@@ -186,6 +192,37 @@ async function handleHisInventory(req: Request, env: Env, rid: string) {
   if (claim.status === "CACHED") return json(claim.result ?? { status: "STAGED" }, 202, rid);
 
   try {
+    if (!env.EVIDENCE_BUCKET) throw new HttpError(503, "HIS_EVIDENCE_STORE_NOT_CONFIGURED");
+    const evidenceObjectKey = [
+      "his", "inventory", String(auth.organization_id), connectionId,
+      validated.batchId, validated.fileSha256, `${bodyHash}.json`
+    ].join("/");
+    try {
+      const evidenceWrite = await env.EVIDENCE_BUCKET.put(evidenceObjectKey, bytes, {
+        onlyIf: { etagDoesNotMatch: "*" },
+        httpMetadata: { contentType: "application/json" },
+        customMetadata: {
+          contract_version: validated.contractVersion,
+          batch_id: validated.batchId,
+          source_sequence: String(validated.sourceSequence),
+          observed_at: validated.observedAt,
+          exported_at: validated.exportedAt,
+          source_artifact_sha256: validated.fileSha256,
+          request_payload_sha256: bodyHash,
+          request_id: rid
+        }
+      });
+      if (!evidenceWrite) {
+        const existing = await env.EVIDENCE_BUCKET.head(evidenceObjectKey);
+        if (!existing || existing.customMetadata?.request_payload_sha256 !== bodyHash) {
+          throw new HttpError(409, "HIS_EVIDENCE_CONFLICT");
+        }
+      }
+    } catch (error) {
+      if (error instanceof HttpError) throw error;
+      throw new HttpError(503, "HIS_EVIDENCE_WRITE_FAILED");
+    }
+
     const staged = await rpc(env, "stage_inventory_observation_v4", {
       p_organization_id: auth.organization_id,
       p_source_system: auth.source_system,
@@ -196,6 +233,17 @@ async function handleHisInventory(req: Request, env: Env, rid: string) {
       p_file_sha256: validated.fileSha256,
       p_metadata: {
         ...validated.metadata,
+        contract_version: validated.contractVersion,
+        batch_id: validated.batchId,
+        source_sequence: validated.sourceSequence,
+        exported_at: validated.exportedAt,
+        warehouse_codes: validated.warehouseCodes,
+        partial_reason: validated.partialReason,
+        source_row_count: validated.statistics.sourceRows,
+        unique_lot_position_count: validated.statistics.uniqueLotPositions,
+        duplicate_lot_position_row_count: validated.statistics.duplicateLotPositionRows,
+        evidence_object_key: evidenceObjectKey,
+        source_artifact_sha256: validated.fileSha256,
         gateway_request_id: rid,
         gateway_idempotency_key: idempotencyKey,
         gateway_payload_sha256: bodyHash
@@ -205,7 +253,17 @@ async function handleHisInventory(req: Request, env: Env, rid: string) {
     const reconciliationId = typeof importJobId === "string"
       ? await rpc(env, "prepare_inventory_reconciliation_v4", { p_import_job_id: importJobId }, rid)
       : null;
-    const result: JsonObject = { status: "STAGED", staged, reconciliation_id: reconciliationId };
+    const result: JsonObject = {
+      status: "STAGED",
+      staged,
+      reconciliation_id: reconciliationId,
+      evidence: {
+        evidence_id: bodyHash,
+        contract_version: validated.contractVersion,
+        source_artifact_sha256: validated.fileSha256,
+        request_payload_sha256: bodyHash
+      }
+    };
     await guardComplete(env, scope, idempotencyKey, bodyHash, result);
     return json(result, 202, rid);
   } catch (error) {

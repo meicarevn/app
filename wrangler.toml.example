@@ -11,6 +11,8 @@ IOT_AUTH_URL = "https://YOUR_PROJECT.functions.supabase.co/iot-device-auth-v1"
 [[r2_buckets]]
 binding = "EVIDENCE_BUCKET"
 bucket_name = "meicare-evidence"
+# Required by HIS ingestion for content-addressed exact request evidence,
+# as well as by the document upload flow.
 
 [[durable_objects.bindings]]
 name = "REQUEST_GUARD"

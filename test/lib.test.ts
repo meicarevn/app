@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  HIS_CONTRACT_VERSION,
   HttpError,
   parseJsonObject,
   sha256Hex,
@@ -29,13 +30,21 @@ describe("gateway validation", () => {
     expect(() => validIdempotencyKey("short")).toThrowError(HttpError);
   });
 
-  it("validates HIS observation envelopes without changing row content", () => {
+  it("validates and normalizes the versioned HIS observation envelope", () => {
     const payload = validateHisPayload({
-      rows: [{ drug_external_code: "18705", lot_number: "250490", expiry_date: "2028-12-02", quantity_on_hand: "10" }],
+      contract_version: HIS_CONTRACT_VERSION,
+      batch_id: "batch-20260906-001",
+      source_sequence: 1,
+      rows: [{ drug_external_code: "18705", warehouse_external_code: "KHO-01", lot_number: "250490", expiry_date: "2028-12-02", quantity_on_hand: "10" }],
+      row_count: 1,
       observed_at: "2026-09-06T08:00:00+07:00",
+      exported_at: "2026-09-06T08:05:00+07:00",
+      source_name: "vnpt-inventory.xlsx",
       coverage_type: "WAREHOUSE_SET_FULL",
-      metadata: { source: "test" }
-    });
+      warehouse_codes: ["KHO-01"],
+      file_sha256: "a".repeat(64),
+      metadata: { adapter_name: "test" }
+    }, Date.parse("2026-09-06T02:00:00Z"));
     expect(payload.rows).toHaveLength(1);
     expect(payload.coverageType).toBe("WAREHOUSE_SET_FULL");
     expect(payload.observedAt).toBe("2026-09-06T01:00:00.000Z");
@@ -43,10 +52,18 @@ describe("gateway validation", () => {
 
   it("rejects invalid HIS coverage", () => {
     expect(() => validateHisPayload({
-      rows: [{}],
+      contract_version: HIS_CONTRACT_VERSION,
+      batch_id: "batch-20260906-002",
+      source_sequence: 2,
+      rows: [{ drug_external_code: "18705", warehouse_external_code: "KHO-01", lot_number: "250490", expiry_date: "2028-12-02", quantity_on_hand: "10" }],
+      row_count: 1,
       observed_at: "2026-09-06T08:00:00+07:00",
-      coverage_type: "EVERYTHING"
-    })).toThrowError(HttpError);
+      exported_at: "2026-09-06T08:05:00+07:00",
+      source_name: "vnpt-inventory.xlsx",
+      coverage_type: "EVERYTHING",
+      warehouse_codes: ["KHO-01"],
+      file_sha256: "b".repeat(64)
+    }, Date.parse("2026-09-06T02:00:00Z"))).toThrowError(HttpError);
   });
 
   it("accepts the existing ESP device identity from X-Device-Id", () => {

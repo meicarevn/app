@@ -83,6 +83,8 @@ This increment keeps the same authenticated, read-only boundary while making the
 
 ## V4_013B acceptance
 
+Status: **PASS** — accepted by the product owner after deployed-preview review.
+
 1. TypeScript, unit/static tests, browser JavaScript syntax checks, and dependency audit pass.
 2. Static pages and Pages Functions emit the required security headers.
 3. An unknown preview route returns the branded 404 with HTTP 404.
@@ -92,6 +94,33 @@ This increment keeps the same authenticated, read-only boundary while making the
 7. Keyboard focus and reduced-motion preferences are supported.
 8. CI proves both the unchanged baseline project and the rollback project remain reachable.
 9. Human acceptance occurs only on the isolated V4_013 preview.
+
+## Increment V4_013C — Controlled VNPT-HIS contract foundation
+
+This increment hardens the existing HIS staging route without connecting a live hospital system or changing the database schema. It:
+
+- requires the versioned `MEICARE_HIS_INVENTORY_V1` envelope;
+- validates and normalizes every warehouse, drug, lot, expiry, quantity and cost field before RPC execution;
+- rejects unknown fields, including patient-identifiable fields that are outside the pharmacy inventory contract;
+- requires explicit row count, warehouse coverage, source sequence, batch ID and source-file SHA-256;
+- rejects stale observations, future timestamps, undeclared warehouses and conflicting lot expiry;
+- records content-addressed exact request evidence in R2 before staging;
+- propagates the contract, batch, sequence, coverage and evidence correlation metadata into the existing V4 import job;
+- preserves the existing `stage → human reconciliation` boundary and performs no canonical inventory commit.
+
+See `docs/V4_013C_VNPT_HIS_CONTRACT.md` for the complete contract and gate.
+
+## V4_013C acceptance
+
+1. TypeScript, tests and dependency audit pass.
+2. The contract rejects unknown envelope and row fields.
+3. Patient/clinical fields cannot enter the normalized inventory payload.
+4. Stale observations and future timestamps are rejected before database staging.
+5. Declared warehouse coverage and row count match the batch contents.
+6. Adapter-declared source-artifact SHA-256 and gateway-computed request-payload SHA-256 are both retained.
+7. R2 evidence succeeds before the staging RPC is called.
+8. The route still ends at staged reconciliation; no inventory event is committed.
+9. No Supabase schema, production route, readiness flag or live VNPT connection is changed by this increment.
 
 ## Promotion rule
 
