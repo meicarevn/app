@@ -1,0 +1,42 @@
+name: V4_013E4 Supabase Synthetic Recovery
+on:
+  pull_request:
+    paths:
+      - 'scripts/v4-013e*.sh'
+      - 'scripts/v4-013e*.py'
+      - 'scripts/v4-013e*.sql'
+      - 'test/fixtures/recovery-synthetic/**'
+      - '.github/workflows/v4-013e4-supabase-recovery.yml'
+permissions:
+  contents: read
+concurrency:
+  group: supabase-synthetic-recovery-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+jobs:
+  supabase-recovery:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: Install pinned CLI and test tooling
+        run: |
+          curl --fail --location --max-time 120 https://github.com/supabase/cli/releases/download/v2.117.0/supabase_2.117.0_linux_amd64.tar.gz -o "$RUNNER_TEMP/supabase.tar.gz"
+          printf '%s  %s\n' '69c05f85b9e47ee706d30f1a6ca8a526b4e337bfd12c7ef1ef522d24e7280d24' "$RUNNER_TEMP/supabase.tar.gz" | sha256sum --check
+          sudo tar --no-same-owner -xzf "$RUNNER_TEMP/supabase.tar.gz" -C /usr/local/bin supabase
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends age postgresql-client ripgrep
+          docker build -t meicare-recovery-synthetic test/fixtures/recovery-synthetic
+          supabase --version
+          supabase start --help
+          supabase db dump --help
+      - name: Real CLI capture and isolated Supabase database restore
+        run: bash scripts/v4-013e4-supabase-recovery.sh
+      - name: Always remove synthetic environments
+        if: always()
+        run: |
+          docker rm -fv meicare-e4-restore-tools || true
+          supabase stop --project-id meicare-e4-source --no-backup || true
+          supabase stop --project-id meicare-e4-target --no-backup || true
+          rm -rf -- "$RUNNER_TEMP/meicare-e4"
