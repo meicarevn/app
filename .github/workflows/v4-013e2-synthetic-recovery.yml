@@ -1,0 +1,45 @@
+name: V4_013E2 Synthetic Recovery
+on:
+  pull_request:
+    paths:
+      - 'scripts/v4-013e*.sh'
+      - 'scripts/v4-013e*.py'
+      - 'scripts/v4-013e*.sql'
+      - 'test/fixtures/recovery-synthetic/**'
+      - '.github/workflows/v4-013e2-synthetic-recovery.yml'
+permissions:
+  contents: read
+concurrency:
+  group: synthetic-recovery-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+jobs:
+  synthetic-recovery:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: Build disposable test tooling
+        run: docker build -t meicare-recovery-synthetic test/fixtures/recovery-synthetic
+      - name: Start database without network or host ports
+        run: |
+          docker run -d --name recovery-synthetic --network none \
+            --mount type=bind,src="$GITHUB_WORKSPACE",dst=/repo,readonly \
+            -e POSTGRES_HOST_AUTH_METHOD=trust meicare-recovery-synthetic
+          for attempt in $(seq 1 30); do
+            if docker exec recovery-synthetic pg_isready -h 127.0.0.1 -U postgres; then
+              exit 0
+            fi
+            sleep 2
+          done
+          exit 1
+      - name: Exercise real PostgreSQL and age with synthetic data
+        run: docker exec recovery-synthetic bash /repo/scripts/v4-013e2-synthetic-recovery.sh
+      - name: Publish only the synthetic summary
+        run: |
+          docker cp recovery-synthetic:/tmp/synthetic-recovery-report.txt "$RUNNER_TEMP/synthetic-recovery-report.txt"
+          cat "$RUNNER_TEMP/synthetic-recovery-report.txt" >> "$GITHUB_STEP_SUMMARY"
+      - name: Remove database, archives and keys
+        if: always()
+        run: docker rm -fv recovery-synthetic || true
