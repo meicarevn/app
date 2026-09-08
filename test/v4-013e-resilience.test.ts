@@ -32,7 +32,7 @@ describe("V4_013E resilience and recovery gate", () => {
   });
 
   it("uses the official three-part Supabase dump and encrypts it", () => {
-    expect(capture.match(/supabase db dump/g)).toHaveLength(3);
+    expect(capture.match(/supabase db dump/g)).toHaveLength(5);
     expect(capture).toContain("--role-only");
     expect(capture).toContain("--data-only");
     expect(capture).toContain("age --recipient");
@@ -47,7 +47,8 @@ describe("V4_013E resilience and recovery gate", () => {
     expect(restore).toContain("Encrypted backup checksum mismatch");
     expect(restore).toContain("Backup archive contains unexpected paths");
     expect(restore).toContain("diff -u");
-    expect(restore).toContain("V4_013E restore drill PASS");
+    expect(restore).toContain("result=DB_CHECKS_PASS");
+    expect(restore).toContain("commercial_recovery_gate=BLOCKED_PENDING_OBJECT_AUTH_RTO_REVIEW");
   });
 
   it("does not claim a drill or recovery objective before evidence exists", () => {

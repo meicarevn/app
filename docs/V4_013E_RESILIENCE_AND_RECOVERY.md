@@ -4,6 +4,10 @@
 
 **PACKAGE READY / RESTORE DRILL BLOCKED**
 
+E1 supersedes the original execution procedure below where noted. Read
+`docs/V4_013E1_RECOVERY_EXECUTION_HARDENING.md` before using either script.
+Automatic restore is now restricted to an approved LOCAL isolated target.
+
 The source database is healthy and the recovery manifest can be generated
 read-only. The Supabase organization is currently on the Free plan. As of the
 V4_013E review, the execution environment has neither the Supabase CLI/psql nor
@@ -46,15 +50,15 @@ plaintext backup evidence.
 Prerequisites:
 
 1. approved change ID and named operator/reviewer;
-2. Supabase CLI, Docker, `psql`, `age`, `tar` and `sha256sum`;
+2. Supabase CLI, Docker, `psql`, Python 3, `age`, `tar` and `sha256sum`;
 3. session-pooler database URL supplied only as a process environment variable;
 4. an `age` recipient controlled by MEICARE;
-5. an access-controlled evidence directory outside the repository.
+5. a new access-controlled evidence directory outside the repository, under an existing parent.
 
 Run `scripts/v4-013e-capture-backup.sh`. The script:
 
 1. captures the deterministic read-only baseline;
-2. uses the official Supabase three-part dump: roles, schema and data;
+2. captures roles, schema and data plus two explicit migration-history dumps;
 3. captures the baseline again and rejects the backup if relevant state drifted
    during the dump window;
 4. packages and encrypts the plaintext files before moving evidence;
@@ -66,8 +70,8 @@ checksums. A database-only backup cannot pass the complete commercial gate.
 
 ## Isolated restore drill
 
-Never restore into production to test a backup. Provision an empty isolated
-database or a compatible local self-hosted Supabase target. Paid Supabase
+Never restore into production to test a backup. Prepare a compatible empty,
+isolated LOCAL self-hosted Supabase target. Remote restore is disabled. Paid Supabase
 branching is not authorized by this increment.
 
 Run `scripts/v4-013e-restore-drill.sh`. It fails closed when:
@@ -75,6 +79,8 @@ Run `scripts/v4-013e-restore-drill.sh`. It fails closed when:
 - source and restore project references match;
 - the restore URL contains the production project reference;
 - the encrypted backup checksum differs;
+- the source-baseline checksum differs or the local database is not empty;
+- approval, isolation or encryption-recovery review is missing;
 - any dump component is missing;
 - restore SQL fails;
 - the source and restored manifests differ byte-for-byte;

@@ -149,6 +149,26 @@ restore target has been approved. Therefore `backup_restore_verified_at` remains
 `NULL`; no production schema, data, mode or readiness flag changes in this
 increment. See `docs/V4_013E_RESILIENCE_AND_RECOVERY.md`.
 
+## E1 follow-up — recovery execution safety
+
+The E1 package adds local-only restore guards, read-only empty-target preflight,
+explicit migration-history capture, baseline checksum verification, safe archive
+handling and offline script execution tests. See
+`docs/V4_013E1_RECOVERY_EXECUTION_HARDENING.md`. This is package hardening, not
+completion of the backup/restore or commercial gate.
+
+## Remaining commercial blockers
+
+| Gate | Required next evidence | Decision owner (proposed) |
+|---|---|---|
+| Recovery | Approved isolated machine, encrypted export destination/key custodian, real restore, Auth/object/RTO review | Founder A |
+| Security | D activation approval after recoverable backup; authenticated and cross-tenant tests; resolve remaining advisor findings | Founder A |
+| HIS | Authorized lighthouse connection, persistent cursor/reconciliation, original-file verification and 14-day canary | Founder A + hospital IT |
+| Clinical | Signed alert/FEFO logic and pharmacist task acceptance | Founder B |
+| Commercial | Named pilot hospital, 3–5 warehouses, scope/SLA/DPA and signed acceptance criteria | Both founders |
+
+Prior A–E package acceptance is not proof that these end-to-end gates passed.
+
 ## Promotion rule
 
 Each V4_013 increment may be merged or deployed only as an isolated preview after automated checks and authenticated human acceptance. It cannot authorize commercial go-live or any readiness/cutover mutation.
