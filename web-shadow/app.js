@@ -7,9 +7,8 @@
     limit: 50,
     offset: 0,
     inventoryStatus: "",
-    gateway: config.gatewayUrl || sessionStorage.getItem("meicare.shadow.gateway") || "",
-    organizationId: config.organizationId || sessionStorage.getItem("meicare.shadow.organization") || "",
-    token: config.accessToken || sessionStorage.getItem("meicare.shadow.token") || ""
+    gateway: config.gatewayUrl || location.origin,
+    organizationId: config.organizationId || window.MEICARE_SESSION.selectedOrganizationId()
   };
 
   const titles = {
@@ -28,9 +27,9 @@
   const errorNotice = document.getElementById("errorNotice");
   const connectionNotice = document.getElementById("connectionNotice");
   const connectionDialog = document.getElementById("connectionDialog");
-  const gatewayInput = document.getElementById("gatewayInput");
   const orgInput = document.getElementById("orgInput");
-  const tokenInput = document.getElementById("tokenInput");
+  const connectionButton = document.getElementById("connectionButton");
+  let hasRenderedView = false;
 
   function escapeHtml(value) {
     return String(value ?? "")
@@ -78,7 +77,7 @@
   }
 
   function configured() {
-    return Boolean(state.gateway && state.organizationId && state.token);
+    return Boolean(state.gateway && state.organizationId);
   }
 
   function updateConnectionNotice() {
@@ -96,10 +95,9 @@
     for (const [key, value] of Object.entries(params)) {
       if (value !== undefined && value !== null && value !== "") url.searchParams.set(key, String(value));
     }
-    const response = await fetch(url.toString(), {
+    const response = await window.MEICARE_SESSION.authorizedFetch(url.toString(), {
       method: "GET",
       headers: {
-        authorization: `Bearer ${state.token}`,
         "x-organization-id": state.organizationId,
         "x-request-id": crypto.randomUUID()
       },
@@ -114,10 +112,64 @@
     return body;
   }
 
+  function organizationLabel(organization) {
+    const suffix = organization.code ? ` · ${organization.code}` : "";
+    return `${organization.name || "Bệnh viện"}${suffix}`;
+  }
+
+  async function refreshOrganizations(openSelector = false) {
+    const organizations = await window.MEICARE_SESSION.organizations();
+    if (!organizations.length) throw new Error("NO_ACTIVE_ORGANIZATION_ROLE");
+    state.organizationId = window.MEICARE_SESSION.selectedOrganizationId();
+    orgInput.innerHTML = organizations.map((organization) => (
+      `<option value="${escapeHtml(organization.id)}" ${organization.id === state.organizationId ? "selected" : ""}>${escapeHtml(organizationLabel(organization))}</option>`
+    )).join("");
+
+    const selected = organizations.find((organization) => organization.id === state.organizationId);
+    connectionButton.textContent = selected ? organizationLabel(selected) : "Chọn bệnh viện";
+    updateConnectionNotice();
+    if (openSelector || (!state.organizationId && organizations.length > 1)) connectionDialog.showModal();
+    return organizations;
+  }
+
   function showError(error) {
+    const code = String(error?.message || "UNKNOWN_ERROR");
+    if (["UNAUTHORIZED", "SESSION_REQUIRED", "SESSION_EXPIRED", "AUTH_INVALID_CREDENTIALS"].includes(code)) {
+      window.MEICARE_SESSION.clear();
+      window.MEICARE_SESSION.redirectToLogin("session_expired");
+      return;
+    }
+
+    const messages = {
+      SHADOW_PERMISSION_DENIED: "Tài khoản không có quyền xem nội dung này.",
+      SHADOW_SCOPE_DENIED: "Vai trò hiện tại không có phạm vi toàn bệnh viện cho nội dung này.",
+      NO_ACTIVE_ORGANIZATION_ROLE: "Tài khoản không còn vai trò hiệu lực tại bệnh viện đã chọn.",
+      SHADOW_ACCESS_READ_FAILED: "Không thể xác minh quyền truy cập. Vui lòng thử lại.",
+      SHADOW_PREVIEW_FAILED: "Dịch vụ dữ liệu tạm thời không khả dụng.",
+      V4_011_SHADOW_READ_FAILED: "Không thể tải mô hình phân tích kho lúc này.",
+      FAILED_TO_FETCH: "Không thể kết nối tới MEICARE. Hãy kiểm tra mạng và thử lại."
+    };
+    const normalized = navigator.onLine === false || /failed to fetch|networkerror|load failed/i.test(code)
+      ? "FAILED_TO_FETCH"
+      : code;
+    const message = messages[normalized] || (code.startsWith("HTTP_5") ? "Dịch vụ tạm thời không khả dụng." : "Không thể tải dữ liệu lúc này.");
     errorNotice.hidden = false;
     const rid = error?.requestId ? ` · Request ${escapeHtml(error.requestId)}` : "";
-    errorNotice.innerHTML = `<strong>Không tải được Shadow data.</strong><span>${escapeHtml(error?.message || error)}${rid}</span>`;
+    const chooseOrganization = ["SHADOW_PERMISSION_DENIED", "SHADOW_SCOPE_DENIED", "NO_ACTIVE_ORGANIZATION_ROLE"].includes(code);
+    errorNotice.innerHTML = `
+      <div class="notice-copy"><strong>Chưa thể cập nhật dữ liệu.</strong><span>${escapeHtml(message)}${rid}</span></div>
+      <div class="notice-actions">
+        <button class="secondary-button" type="button" data-error-action="retry">Thử lại</button>
+        ${chooseOrganization ? '<button class="secondary-button" type="button" data-error-action="organization">Đổi bệnh viện</button>' : ""}
+      </div>`;
+    errorNotice.querySelector('[data-error-action="retry"]')?.addEventListener("click", load);
+    errorNotice.querySelector('[data-error-action="organization"]')?.addEventListener("click", async () => {
+      try {
+        await refreshOrganizations(true);
+      } catch (organizationError) {
+        showError(organizationError);
+      }
+    });
   }
 
   function clearError() {
@@ -309,8 +361,9 @@
       else if (state.view === "documents") await renderDocuments();
       else if (state.view === "compare") await renderCompare();
       else if (state.view === "readiness") await renderReadiness();
+      hasRenderedView = true;
     } catch (error) {
-      root.innerHTML = empty();
+      if (!hasRenderedView) root.innerHTML = empty();
       showError(error);
     } finally {
       loading.hidden = true;
@@ -328,29 +381,44 @@
   });
 
   document.getElementById("refreshButton").addEventListener("click", load);
-  document.getElementById("connectionButton").addEventListener("click", () => {
-    gatewayInput.value = state.gateway;
-    orgInput.value = state.organizationId;
-    tokenInput.value = state.token;
-    connectionDialog.showModal();
+  connectionButton.addEventListener("click", async () => {
+    try {
+      await refreshOrganizations(true);
+    } catch (error) {
+      showError(error);
+    }
   });
 
   document.getElementById("saveConnectionButton").addEventListener("click", () => {
-    const gateway = gatewayInput.value.trim();
-    const organization = orgInput.value.trim();
-    const token = tokenInput.value.trim();
-    if (!gateway || !organization || !token) return;
-    state.gateway = gateway;
+    const organization = orgInput.value;
+    if (!organization) return;
+    window.MEICARE_SESSION.selectOrganization(organization);
     state.organizationId = organization;
-    state.token = token;
-    sessionStorage.setItem("meicare.shadow.gateway", gateway);
-    sessionStorage.setItem("meicare.shadow.organization", organization);
-    sessionStorage.setItem("meicare.shadow.token", token);
     connectionDialog.close();
     updateConnectionNotice();
     load();
   });
 
+  document.getElementById("logoutButton").addEventListener("click", async () => {
+    await window.MEICARE_SESSION.signOut();
+    window.MEICARE_SESSION.redirectToLogin("signed_out");
+  });
+
+  window.addEventListener("meicare:session-expired", () => {
+    window.MEICARE_SESSION.redirectToLogin("session_expired");
+  });
+  window.addEventListener("online", () => {
+    if (configured()) load();
+  });
+
   updateConnectionNotice();
-  load();
+  refreshOrganizations()
+    .then(load)
+    .catch((error) => {
+      if (["SESSION_REQUIRED", "SESSION_EXPIRED", "UNAUTHORIZED"].includes(error?.message)) {
+        window.MEICARE_SESSION.redirectToLogin("session_expired");
+        return;
+      }
+      showError(error);
+    });
 })();

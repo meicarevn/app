@@ -36,6 +36,27 @@
   text-decoration: none;
 }
 
+.fallback-page {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+}
+
+.fallback-card {
+  width: min(560px, 100%);
+  padding: clamp(24px, 5vw, 42px);
+  border: 1px solid var(--border);
+  border-radius: 22px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+
+.fallback-card h1 { margin-block: 0 10px; }
+.fallback-card > p:not(.eyebrow) { color: var(--muted); line-height: 1.6; }
+.fallback-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 24px; }
+.fallback-actions a { display: inline-flex; align-items: center; justify-content: center; text-decoration: none; }
+
 @media (prefers-color-scheme: dark) {
   :root {
     --platform-soft: color-mix(in srgb, var(--platform-accent) 20%, var(--surface));
@@ -50,4 +71,8 @@
   .platform-review-link {
     display: none;
   }
+}
+
+@media (max-width: 480px) {
+  .fallback-actions a { width: 100%; min-height: 44px; }
 }

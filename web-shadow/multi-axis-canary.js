@@ -4,8 +4,7 @@
   const config = window.MEICARE_SHADOW_CONFIG || {};
   const state = {
     gateway: config.gatewayUrl || sessionStorage.getItem("meicare.shadow.gateway") || location.origin,
-    organizationId: config.organizationId || sessionStorage.getItem("meicare.shadow.organization") || "",
-    token: config.accessToken || sessionStorage.getItem("meicare.shadow.token") || ""
+    organizationId: config.organizationId || window.MEICARE_SESSION.selectedOrganizationId()
   };
 
   const $ = (id) => document.getElementById(id);
@@ -37,15 +36,14 @@
   }
 
   async function api() {
-    if (!state.organizationId || !state.token) throw new Error("PREVIEW_SESSION_REQUIRED");
+    if (!state.organizationId) throw new Error("PREVIEW_SESSION_REQUIRED");
     const base = state.gateway.replace(/\/+$/, "");
     const url = new URL(`${base}/v4/shadow/intelligence-v4-011-canary`);
     url.searchParams.set("organization_id", state.organizationId);
     url.searchParams.set("limit", "50");
-    const response = await fetch(url.toString(), {
+    const response = await window.MEICARE_SESSION.authorizedFetch(url.toString(), {
       method: "GET",
       headers: {
-        authorization: `Bearer ${state.token}`,
         "x-organization-id": state.organizationId,
         "x-request-id": crypto.randomUUID(),
         "x-meicare-canary": "V4_011C"

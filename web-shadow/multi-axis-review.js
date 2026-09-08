@@ -4,8 +4,7 @@
   const config = window.MEICARE_SHADOW_CONFIG || {};
   const state = {
     gateway: config.gatewayUrl || sessionStorage.getItem("meicare.shadow.gateway") || location.origin,
-    organizationId: config.organizationId || sessionStorage.getItem("meicare.shadow.organization") || "",
-    token: config.accessToken || sessionStorage.getItem("meicare.shadow.token") || "",
+    organizationId: config.organizationId || window.MEICARE_SESSION.selectedOrganizationId(),
     limit: 100,
     offset: 0,
     total: 0,
@@ -64,11 +63,10 @@
   }
 
   async function api() {
-    if (!state.organizationId || !state.token) throw new Error("PREVIEW_SESSION_REQUIRED");
-    const response = await fetch(apiUrl().toString(), {
+    if (!state.organizationId) throw new Error("PREVIEW_SESSION_REQUIRED");
+    const response = await window.MEICARE_SESSION.authorizedFetch(apiUrl().toString(), {
       method: "GET",
       headers: {
-        authorization: `Bearer ${state.token}`,
         "x-organization-id": state.organizationId,
         "x-request-id": crypto.randomUUID()
       },

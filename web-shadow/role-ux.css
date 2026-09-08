@@ -80,7 +80,7 @@ a:focus-visible {
   .brand span { display: none; }
   .topbar-actions { gap: 7px; }
   .shadow-badge { display: none; }
-  #connectionButton { display: none; }
+  #connectionButton { max-width: 220px; overflow: hidden; text-overflow: ellipsis; }
   .app-shell { display: block; padding-top: 68px; }
   .sidebar {
     top: 68px;
@@ -126,7 +126,7 @@ a:focus-visible {
   .brand span { display: none; }
   .topbar-actions { gap: 6px; }
   .shadow-badge { display: none; }
-  .role-badge { max-width: 128px; min-height: 30px; padding-inline: 8px; }
+  .role-badge { display: none; }
   .app-shell { padding-top: 64px; }
   .sidebar { top: 64px; height: 54px; padding-inline: 10px; }
   .content { padding: 74px 12px calc(44px + env(safe-area-inset-bottom)); }

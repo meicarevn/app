@@ -1,13 +1,15 @@
 (() => {
   "use strict";
 
-  const SUPABASE_URL = "https://sgxufmcsnveyyddazwuk.supabase.co";
-  const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_9xbWYiMtnriBmFwuiGp8Qw_FNTB8NFc";
-  const ORGANIZATION_ID = "68d83220-4e5d-46e7-8bd3-7863205985f4";
-
   const form = document.getElementById("loginForm");
   const message = document.getElementById("message");
   const clearButton = document.getElementById("clearSession");
+
+  clearButton.hidden = !window.MEICARE_SESSION.hasSession();
+
+  const reason = new URL(location.href).searchParams.get("reason");
+  if (reason === "session_expired") show("Phiên làm việc đã hết hạn. Vui lòng đăng nhập lại.", "warning");
+  if (reason === "signed_out") show("Bạn đã đăng xuất an toàn.", "success");
 
   function show(text, kind = "warning") {
     message.className = `notice ${kind}`;
@@ -15,16 +17,10 @@
     message.hidden = false;
   }
 
-  function clearPreviewSession() {
-    sessionStorage.removeItem("meicare.shadow.token");
-    sessionStorage.removeItem("meicare.shadow.gateway");
-    sessionStorage.removeItem("meicare.shadow.organization");
-  }
-
-  clearButton.addEventListener("click", () => {
-    clearPreviewSession();
+  clearButton.addEventListener("click", async () => {
+    await window.MEICARE_SESSION.signOut();
     document.getElementById("password").value = "";
-    show("Đã xoá access token và cấu hình preview khỏi sessionStorage của tab này.", "success");
+    show("Đã đăng xuất an toàn khỏi phiên làm việc trên thiết bị này.", "success");
   });
 
   form.addEventListener("submit", async (event) => {
@@ -36,33 +32,27 @@
 
     const submit = form.querySelector('button[type="submit"]');
     submit.disabled = true;
+    form.setAttribute("aria-busy", "true");
     try {
-      const response = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=password`, {
-        method: "POST",
-        headers: {
-          apikey: SUPABASE_PUBLISHABLE_KEY,
-          "content-type": "application/json"
-        },
-        body: JSON.stringify({ email, password }),
-        cache: "no-store"
-      });
-      const body = await response.json().catch(() => ({}));
-      if (!response.ok || typeof body.access_token !== "string") {
-        throw new Error(response.status === 400 ? "Đăng nhập không thành công." : `AUTH_${response.status}`);
-      }
-
-      clearPreviewSession();
-      sessionStorage.setItem("meicare.shadow.token", body.access_token);
-      sessionStorage.setItem("meicare.shadow.gateway", location.origin);
-      sessionStorage.setItem("meicare.shadow.organization", ORGANIZATION_ID);
+      await window.MEICARE_SESSION.signIn(email, password);
       document.getElementById("password").value = "";
       location.replace("./");
     } catch (error) {
-      clearPreviewSession();
+      const code = String(error?.message || "UNKNOWN_ERROR");
+      const sessionFailure = ["AUTH_INVALID_CREDENTIALS", "NO_ACTIVE_ORGANIZATION_ROLE", "SESSION_EXPIRED"].includes(code);
+      if (sessionFailure) window.MEICARE_SESSION.clear();
+      clearButton.hidden = !window.MEICARE_SESSION.hasSession();
       document.getElementById("password").value = "";
-      show(error?.message || "Không thể đăng nhập preview.", "error");
+      const messages = {
+        AUTH_INVALID_CREDENTIALS: "Email hoặc mật khẩu không đúng.",
+        NO_ACTIVE_ORGANIZATION_ROLE: "Tài khoản chưa được phân quyền vào bệnh viện đang hoạt động.",
+        SESSION_EXPIRED: "Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.",
+        "Failed to fetch": "Không thể kết nối tới MEICARE. Hãy kiểm tra mạng và thử lại."
+      };
+      show(messages[error?.message] || "Không thể đăng nhập. Vui lòng thử lại.", "error");
     } finally {
       submit.disabled = false;
+      form.removeAttribute("aria-busy");
     }
   });
 })();

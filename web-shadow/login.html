@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta name="color-scheme" content="light dark" />
   <meta name="robots" content="noindex,nofollow" />
-  <title>MEICARE V4 Shadow Preview Login</title>
+  <title>Đăng nhập MEICARE Platform</title>
   <link rel="stylesheet" href="./styles.css" />
   <style>
     [hidden]{display:none!important}
@@ -21,25 +21,32 @@
     .actions{display:flex;gap:10px;flex-wrap:wrap}
     .notice{margin-top:16px}
     .small{font-size:.9rem;opacity:.82}
+    .network-banner{position:fixed;inset:auto 16px 16px;z-index:100;padding:10px 16px;background:#fff8db;color:#6f5100;text-align:center;font-weight:700;border:1px solid #f0d777;border-radius:12px;box-shadow:var(--shadow)}
+    button:disabled{cursor:wait;opacity:.65}
+    :focus-visible{outline:3px solid color-mix(in srgb,var(--accent) 55%,white);outline-offset:3px}
     @media(max-width:560px){body{padding:16px}.login-card{padding:22px}.actions>*{flex:1 1 100%}}
+    @media(max-height:620px){body{place-items:start center}.login-card{margin-block:12px}}
+    @media(prefers-reduced-motion:reduce){*{scroll-behavior:auto!important}}
   </style>
 </head>
 <body>
+  <div class="network-banner" data-network-status role="status" hidden></div>
   <main class="login-card">
-    <p class="eyebrow">V4_010 · ISOLATED SHADOW PREVIEW</p>
-    <h1>Đăng nhập MEICARE Shadow</h1>
-    <p>Chỉ dùng tài khoản Supabase hiện tại. Mật khẩu không được lưu; access token chỉ nằm trong <code>sessionStorage</code> của tab này và không có service-role key.</p>
+    <p class="eyebrow">V4_013 · COMMERCIAL READINESS</p>
+    <h1>Đăng nhập MEICARE</h1>
+    <p>Dùng tài khoản đã được bệnh viện cấp quyền. MEICARE tự xác định bệnh viện và vai trò hiệu lực; người dùng không cần nhập mã tổ chức hoặc access token.</p>
     <form id="loginForm">
       <label>Email<input id="email" type="email" autocomplete="username" required /></label>
       <label>Mật khẩu<input id="password" type="password" autocomplete="current-password" required /></label>
       <div class="actions">
-        <button class="primary-button" type="submit">Đăng nhập preview</button>
-        <button class="secondary-button" id="clearSession" type="button">Xoá phiên preview</button>
+        <button class="primary-button" type="submit">Đăng nhập</button>
+        <button class="secondary-button" id="clearSession" type="button">Đăng xuất thiết bị này</button>
       </div>
     </form>
     <section id="message" class="notice" hidden aria-live="polite"></section>
-    <p class="small">Preview này chỉ đọc. Runtime production, inventory write mode và alert publication không được thay đổi từ giao diện này.</p>
+    <p class="small">V4_013 vẫn vận hành ở chế độ pre-production, chỉ đọc. Mọi quyền dữ liệu tiếp tục được kiểm soát bởi Supabase RLS.</p>
   </main>
+  <script src="./session.js" defer></script>
   <script src="./login.js" defer></script>
 </body>
 </html>

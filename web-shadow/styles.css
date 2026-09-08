@@ -25,7 +25,25 @@ html { min-width: 320px; }
 body { margin: 0; min-height: 100vh; background: #f4f7fb; color: var(--text); }
 button, input, textarea, select { font: inherit; }
 button { cursor: pointer; }
+button:disabled { cursor: not-allowed; opacity: .58; }
 code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .9em; }
+
+.network-banner {
+  position: fixed;
+  inset: auto 16px calc(16px + env(safe-area-inset-bottom));
+  z-index: 100;
+  max-width: min(520px, calc(100vw - 32px));
+  margin-inline: auto;
+  padding: 11px 14px;
+  border: 1px solid #f0d777;
+  border-radius: 12px;
+  background: var(--warning-soft);
+  color: #6f5100;
+  box-shadow: var(--shadow);
+  font-size: 13px;
+  font-weight: 700;
+  text-align: center;
+}
 
 .topbar {
   position: fixed;
@@ -88,6 +106,8 @@ h3 { margin: 0; font-size: 16px; }
 .icon-button { background: transparent; color: var(--muted); min-width: 40px; font-size: 24px; padding: 0; }
 
 .notice { border-radius: 14px; padding: 14px 16px; margin: 0 0 18px; display: flex; gap: 8px; flex-wrap: wrap; border: 1px solid; }
+.notice-copy { display: grid; flex: 1 1 340px; gap: 4px; }
+.notice-actions { display: flex; align-items: center; gap: 8px; margin-left: auto; }
 .notice.warning { background: var(--warning-soft); border-color: #f0d777; color: #6f5100; }
 .notice.error { background: var(--danger-soft); border-color: #f2b8b2; color: var(--danger); }
 .loading { padding: 28px; text-align: center; color: var(--muted); }
@@ -145,13 +165,13 @@ tbody tr:hover { background: #f8fbff; }
 footer { color: var(--muted); font-size: 12px; margin-top: 24px; }
 
 dialog {
-  width: min(620px, calc(100vw - 28px)); border: 0; border-radius: 20px; padding: 0; color: var(--text); background: var(--surface); box-shadow: 0 28px 80px rgba(12,26,50,.28);
+  width: min(620px, calc(100vw - 28px)); max-height: calc(100dvh - 28px); overflow: auto; border: 0; border-radius: 20px; padding: 0; color: var(--text); background: var(--surface); box-shadow: 0 28px 80px rgba(12,26,50,.28);
 }
 dialog::backdrop { background: rgba(8, 18, 33, .52); backdrop-filter: blur(4px); }
 dialog form { padding: 22px; }
 .dialog-heading { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; margin-bottom: 10px; }
 dialog label { display: grid; gap: 7px; margin-top: 15px; font-size: 13px; font-weight: 700; }
-dialog input, dialog textarea { width: 100%; border: 1px solid var(--border); border-radius: 11px; padding: 10px 12px; background: var(--surface-2); color: var(--text); resize: vertical; }
+dialog input, dialog textarea, dialog select { width: 100%; min-height: 44px; border: 1px solid var(--border); border-radius: 11px; padding: 10px 12px; background: var(--surface-2); color: var(--text); resize: vertical; }
 .dialog-actions { display: flex; justify-content: flex-end; gap: 9px; margin-top: 20px; }
 .muted { color: var(--muted); }
 
@@ -165,6 +185,8 @@ dialog input, dialog textarea { width: 100%; border: 1px solid var(--border); bo
 @media (max-width: 760px) {
   .topbar { min-height: 64px; }
   .brand span { display: none; }
+  .topbar-actions { gap: 6px; }
+  #connectionButton { max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .shadow-badge { font-size: 10px; padding-inline: 8px; }
   .app-shell { display: block; padding-top: 64px; }
   .sidebar {
@@ -179,12 +201,19 @@ dialog input, dialog textarea { width: 100%; border: 1px solid var(--border); bo
   .metric-card { padding: 14px; border-radius: 15px; }
   .panel { border-radius: 15px; }
   .panel-header, .panel-body { padding: 14px; }
+  .notice-actions { width: 100%; margin-left: 0; }
+  .notice-actions button { flex: 1; }
+  .table-wrap th:first-child,
+  .table-wrap td:first-child { position: sticky; left: 0; z-index: 2; background: var(--surface); box-shadow: 1px 0 0 var(--border); }
+  .table-wrap th:first-child { z-index: 3; background: #f5f8fc; }
 }
 
 @media (max-width: 480px) {
   .brand strong { font-size: 13px; }
   .brand-mark { width: 36px; height: 36px; border-radius: 11px; }
   .secondary-button { padding-inline: 10px; }
+  #logoutButton { font-size: 0; width: 40px; padding: 0; }
+  #logoutButton::before { content: "↪"; font-size: 18px; }
   .metrics-grid { grid-template-columns: 1fr; }
   .page-heading { display: grid; }
   .page-actions, .page-actions button { width: 100%; }
@@ -209,5 +238,7 @@ dialog input, dialog textarea { width: 100%; border: 1px solid var(--border); bo
   .topbar { background: rgba(17, 27, 44, .94); }
   th { background: #18243a; color: #b7c4d8; }
   tbody tr:hover { background: #132036; }
+  .network-banner { color: #f6d46b; border-color: #c69a35; }
+  .table-wrap th:first-child { background: #18243a; }
   .status-pill { background: #26344a; color: #cad5e5; }
 }

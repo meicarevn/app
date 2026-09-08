@@ -1,4 +1,4 @@
-import { createHmac, randomUUID } from "node:crypto";
+import { createHash, createHmac, randomUUID } from "node:crypto";
 import { writeFile } from "node:fs/promises";
 
 const baseUrl = process.env.CANARY_GATEWAY_URL?.replace(/\/$/, "");
@@ -65,12 +65,36 @@ if (suites.has("his")) {
     const connectionId = requireEnv("CANARY_HIS_CONNECTION_ID");
     const apiKey = requireEnv("CANARY_HIS_API_KEY");
     const rows = JSON.parse(requireEnv("CANARY_HIS_ROWS_JSON"));
+    const coverageType = process.env.CANARY_HIS_COVERAGE_TYPE || "PARTIAL";
+    const runId = process.env.GITHUB_RUN_ID || String(Date.now());
+    const runAttempt = Number(process.env.GITHUB_RUN_ATTEMPT || 1);
+    const sourceSequence = Number(runId) * 10 + runAttempt;
+    const batchId = `gh-${runId}-${runAttempt}`;
+    const observedAt = new Date().toISOString();
+    const warehouseCodes = [...new Set(rows.map((row) => String(row.warehouse_external_code || "").trim().toUpperCase()).filter(Boolean))];
+    const fileSha256 = createHash("sha256").update(JSON.stringify(rows)).digest("hex");
     const payload = JSON.stringify({
+      contract_version: "MEICARE_HIS_INVENTORY_V1",
+      batch_id: batchId,
+      source_sequence: sourceSequence,
       rows,
-      observed_at: new Date().toISOString(),
-      source_name: "github-canary-smoke",
-      coverage_type: process.env.CANARY_HIS_COVERAGE_TYPE || "PARTIAL",
-      metadata: { canary: true, run_id: process.env.GITHUB_RUN_ID || null }
+      row_count: rows.length,
+      observed_at: observedAt,
+      exported_at: observedAt,
+      source_name: "github-canary-smoke.json",
+      coverage_type: coverageType,
+      warehouse_codes: warehouseCodes,
+      ...(coverageType === "PARTIAL" ? { partial_reason: "Controlled canary subset" } : {}),
+      file_sha256: fileSha256,
+      metadata: {
+        adapter_name: "github-canary-smoke",
+        adapter_version: "V4_013C",
+        export_profile: "CONTROLLED_CANARY",
+        source_timezone: "UTC",
+        source_file_format: "JSON",
+        canary: true,
+        run_id: runId
+      }
     });
     const res = await fetch(`${baseUrl}/v4/his/inventory`, {
       method: "POST",
@@ -79,7 +103,7 @@ if (suites.has("his")) {
         "x-meicare-connection-id": connectionId,
         "x-meicare-api-key": apiKey,
         "x-meicare-timestamp": String(Math.floor(Date.now() / 1000)),
-        "x-idempotency-key": `gh-${process.env.GITHUB_RUN_ID || Date.now()}-${process.env.GITHUB_RUN_ATTEMPT || 1}`
+        "x-idempotency-key": batchId
       },
       body: payload
     });

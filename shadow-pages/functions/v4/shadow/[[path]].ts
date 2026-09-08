@@ -1,6 +1,11 @@
 import { handleShadowRead } from "../../../../src/shadow";
 import { handleMemberAdminRead } from "../../../../src/member-admin-read";
-import { getShadowAccess, enforceShadowRoute, shadowOrganizationId } from "../../../../src/shadow-access";
+import {
+  getShadowAccess,
+  enforceShadowRoute,
+  listShadowOrganizations,
+  shadowOrganizationId
+} from "../../../../src/shadow-access";
 import { HttpError, requestId } from "../../../../src/lib";
 
 type Env = Record<string, never>;
@@ -27,6 +32,11 @@ function json(body: Json, status: number, rid: string) {
       "cache-control": "no-store",
       "x-content-type-options": "nosniff",
       "x-frame-options": "DENY",
+      "referrer-policy": "no-referrer",
+      "permissions-policy": "camera=(), microphone=(), geolocation=(), payment=(), usb=()",
+      "cross-origin-opener-policy": "same-origin",
+      "cross-origin-resource-policy": "same-origin",
+      "strict-transport-security": "max-age=31536000; includeSubDomains",
       "content-security-policy": "default-src 'none'; frame-ancestors 'none'",
       "x-request-id": rid
     }
@@ -41,6 +51,11 @@ async function handle(context: PagesContext) {
     if (req.method !== "GET") throw new HttpError(405, "METHOD_NOT_ALLOWED");
 
     const url = new URL(req.url);
+    if (url.pathname === "/v4/shadow/organizations") {
+      const organizations = await listShadowOrganizations(req, SHADOW_ENV, rid);
+      return json({ organizations }, 200, rid);
+    }
+
     const org = shadowOrganizationId(req, url);
     const access = await getShadowAccess(req, SHADOW_ENV, rid, org);
 
