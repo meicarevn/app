@@ -2,6 +2,12 @@
 
 Status: local implementation; no production export, restore, DDL or deployment.
 
+Update: E1 was pushed and E2 subsequently exercised this restore script with
+real PostgreSQL/age and synthetic data. See `V4_013E2_SYNTHETIC_RECOVERY.md` and
+`V4_013E3_REAL_RECOVERY_PLAN.md`. The limitations below describe the original
+E1 checkpoint; production capture/restore and full Supabase compatibility remain
+unverified. E2 CI passed at c8c450b on 2026-09-08.
+
 ## Findings corrected
 
 1. E's standard three-part dump omitted `supabase_migrations`, although the
