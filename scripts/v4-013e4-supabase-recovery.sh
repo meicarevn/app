@@ -71,6 +71,10 @@ drop schema if exists supabase_migrations restrict;
 SQL
 docker exec "$target_db" psql -U supabase_admin -d postgres -X -v ON_ERROR_STOP=1 -c "alter system set cron.launch_active_jobs = 'off'"
 docker exec "$target_db" psql -U supabase_admin -d postgres -X -v ON_ERROR_STOP=1 -c 'select pg_reload_conf()'
+# Local Supabase's role-creation hook sets log_min_messages on custom roles.
+# The dump preserves it; grant only this parameter permission on the disposable
+# target, never SUPERUSER. Revoke after the restore/role checks complete.
+docker exec "$target_db" psql -U supabase_admin -d postgres -X -v ON_ERROR_STOP=1 -c 'grant set on parameter log_min_messages to postgres'
 # Stop services to prevent background schema/data writes. Disconnect every DB
 # network before sharing its loopback-only namespace with the restore tools.
 for container in $(docker ps --format '{{.Names}}' | rg '_meicare-e4-target$'); do
@@ -86,5 +90,6 @@ docker run --name meicare-e4-restore-tools --network "container:$target_db" \
   --mount type=bind,src="$run_root/input",dst=/input,readonly \
   --entrypoint env meicare-recovery-synthetic -i PATH=/usr/local/bin:/usr/bin:/bin HOME=/tmp \
   bash /repo/scripts/v4-013e4-isolated-restore.sh
+docker exec "$target_db" psql -U supabase_admin -d postgres -X -v ON_ERROR_STOP=1 -c 'revoke set on parameter log_min_messages from postgres'
 docker cp meicare-e4-restore-tools:/tmp/e4-summary.txt "$RUNNER_TEMP/e4-summary.txt"
 cat "$RUNNER_TEMP/e4-summary.txt" >> "$GITHUB_STEP_SUMMARY"

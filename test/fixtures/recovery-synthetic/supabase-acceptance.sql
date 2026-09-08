@@ -1,5 +1,6 @@
 begin;
-set transaction read only;
+-- Synthetic transaction rolls back; allow the negative INSERT to reach the
+-- privilege check rather than being rejected merely by read-only mode.
 do $$
 begin
   if (select count(*) from auth.users where id='11111111-1111-4111-8111-111111111111'

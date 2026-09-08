@@ -13,6 +13,12 @@ network namespace. Every database Docker network is disconnected first; the
 sidecar asserts loopback is the only interface and has no Docker socket.
 Target services are stopped and cron launching disabled before import.
 
+The first full run exposed a local role-bootstrap requirement: custom roles
+carry a log_min_messages setting which restricted postgres cannot restore.
+The disposable target administrator grants SET on that one parameter before
+restore and revokes it afterwards. No SUPERUSER grant, production permission
+change or SQL-dump filtering is used. Failure destroys the entire target.
+
 The application fixture remains simplified synthetic tables, while Auth/Storage
 schemas and extensions come from Supabase itself. Real Auth password-hash rows,
 Storage metadata, custom NOLOGIN role/grants, a tenant-filtered RLS policy and
