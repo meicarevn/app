@@ -136,6 +136,19 @@ The migration, acceptance query and rollback are committed for review but are no
 applied to production by this increment. Database activation requires a separate
 controlled approval, backup evidence, advisor rerun and role/tenant test gate.
 
+## Increment V4_013E — Resilience and recovery evidence
+
+This increment defines the zero-cost controlled backup/restore and incident
+readiness package. It adds a deterministic read-only database manifest,
+encrypted three-part Supabase logical backup procedure, isolated restore
+acceptance checks, recovery objectives and an incident/rollback rehearsal.
+
+Status: **PACKAGE READY / RESTORE DRILL BLOCKED**. The Supabase organization is
+on the Free plan, no recoverable export has yet been captured, and no isolated
+restore target has been approved. Therefore `backup_restore_verified_at` remains
+`NULL`; no production schema, data, mode or readiness flag changes in this
+increment. See `docs/V4_013E_RESILIENCE_AND_RECOVERY.md`.
+
 ## Promotion rule
 
 Each V4_013 increment may be merged or deployed only as an isolated preview after automated checks and authenticated human acceptance. It cannot authorize commercial go-live or any readiness/cutover mutation.
