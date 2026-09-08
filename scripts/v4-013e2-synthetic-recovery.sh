@@ -18,6 +18,9 @@ psql "$target_url" -X -v ON_ERROR_STOP=1 -c 'create database synthetic_source'
 psql "$source_url" -X -v ON_ERROR_STOP=1 -f test/fixtures/recovery-synthetic/source.sql
 # Minimal managed-schema stubs solely to exercise the unchanged E1 preflight.
 psql "$target_url" -X -v ON_ERROR_STOP=1 <<'SQL'
+-- Plain pg_dump recreates public. RESTRICT proves this fresh fixture schema
+-- is empty; never use CASCADE or apply this bootstrap to an operator target.
+drop schema public restrict;
 create schema auth;
 create table auth.users(id text);
 create schema storage;
