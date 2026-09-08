@@ -18,8 +18,9 @@ export AGE_IDENTITY_FILE=/input/key DRILL_EVIDENCE_DIR=/tmp/e4-evidence
 export EXPECTED_BACKUP_SHA256=$(sha256sum "$ENCRYPTED_BACKUP" | cut -d ' ' -f1)
 export EXPECTED_BASELINE_SHA256=$(sha256sum "$SOURCE_BASELINE_CSV" | cut -d ' ' -f1)
 bash /repo/scripts/v4-013e-restore-drill.sh
-psql "$target_url" -X -v ON_ERROR_STOP=1 -f /repo/test/fixtures/recovery-synthetic/supabase-acceptance.sql
 grep -q '^result=DB_CHECKS_PASS$' /tmp/e4-evidence/E4-synthetic-restore-report.txt
+# Candidate summary only. The controller publishes it only AFTER the fixture
+# acceptance SQL succeeds through the isolated target's local admin socket.
 printf '%s\n' 'result=SUPABASE_SYNTHETIC_RECOVERY_PASS' 'production_recovery_gate=BLOCKED' \
   'cli_capture=PASS' 'managed_metadata_match=PASS' 'auth_record_hash=PASS' \
   'storage_metadata=PASS' 'custom_role_rls=PASS' 'pgcrypto_external_fixture_key=PASS' \

@@ -21,6 +21,10 @@ set local role recovery_fixture_reader;
 set local meicare.synthetic_tenant='tenant-a';
 do $$
 begin
+  if current_user <> 'recovery_fixture_reader'
+     or (select rolsuper or rolbypassrls from pg_roles where rolname=current_user) then
+    raise exception 'SYNTHETIC_ROLE_NOT_RESTRICTED';
+  end if;
   if (select count(*) from public.recovery_tenant_probe) <> 1
      or exists (select 1 from public.recovery_tenant_probe where organization_id='tenant-b') then
     raise exception 'SYNTHETIC_TENANT_ISOLATION_FAILURE';
