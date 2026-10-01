@@ -113,11 +113,14 @@ describe("V4_014A care coordination read layer", () => {
   });
 
   it("exposes a Vietnamese-first care queue without mutation controls", () => {
-    const html = readFileSync("web-shadow/index.html", "utf8");
+    const shadowHtml = readFileSync("web-shadow/index.html", "utf8");
+    const platformHtml = readFileSync("web-platform/index.html", "utf8");
     const app = readFileSync("web-shadow/app.js", "utf8");
 
-    expect(html).toContain('data-view="care"');
-    expect(html).toContain("Hàng đợi chăm sóc");
+    for (const html of [shadowHtml, platformHtml]) {
+      expect(html).toContain('data-view="care"');
+      expect(html).toContain("Hàng đợi chăm sóc");
+    }
     expect(app).toContain('api("/v4/shadow/care"');
     expect(app).toContain("không hiển thị raw metadata");
     expect(app).not.toMatch(/\/v4\/shadow\/care[^\n]*(POST|PATCH|DELETE)/);
