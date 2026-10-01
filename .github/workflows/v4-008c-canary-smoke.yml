@@ -1,0 +1,52 @@
+name: V4 Gateway Canary Smoke
+
+on:
+  workflow_dispatch:
+    inputs:
+      suites:
+        description: "Comma-separated suites: health,his,iot,r2,ai"
+        required: true
+        default: "health"
+      evidence_retention_days:
+        description: "Artifact retention days"
+        required: true
+        default: "14"
+
+permissions:
+  contents: read
+
+env:
+  CANARY_SUITES: ${{ inputs.suites }}
+  CANARY_GATEWAY_URL: ${{ vars.CANARY_GATEWAY_URL }}
+  CANARY_HIS_COVERAGE_TYPE: PARTIAL
+  CANARY_HIS_CONNECTION_ID: ${{ secrets.CANARY_HIS_CONNECTION_ID }}
+  CANARY_HIS_API_KEY: ${{ secrets.CANARY_HIS_API_KEY }}
+  CANARY_HIS_ROWS_JSON: ${{ secrets.CANARY_HIS_ROWS_JSON }}
+  CANARY_IOT_DEVICE_UID: ${{ secrets.CANARY_IOT_DEVICE_UID }}
+  CANARY_IOT_DEVICE_SECRET: ${{ secrets.CANARY_IOT_DEVICE_SECRET }}
+  CANARY_IOT_SEQUENCE: ${{ vars.CANARY_IOT_SEQUENCE }}
+  CANARY_USER_JWT: ${{ secrets.CANARY_USER_JWT }}
+  CANARY_TEST_DOCUMENT_ID: ${{ vars.CANARY_TEST_DOCUMENT_ID }}
+  CANARY_ORGANIZATION_ID: ${{ vars.CANARY_ORGANIZATION_ID }}
+
+jobs:
+  smoke:
+    name: Non-production gateway smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: canary
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Run canary smoke harness
+        run: npm run canary:smoke
+      - name: Upload canary evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: meicare-v4-canary-evidence-${{ github.run_id }}-${{ github.run_attempt }}
+          path: canary-evidence.json
+          if-no-files-found: warn
+          retention-days: ${{ fromJSON(inputs.evidence_retention_days) }}
