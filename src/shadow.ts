@@ -26,6 +26,13 @@ function boundedInt(value: string | null, fallback: number, min: number, max: nu
   return parsed;
 }
 
+function safeCareToken(value: string | null) {
+  if (value == null || value === "") return null;
+  const normalized = value.trim().toUpperCase();
+  if (!/^[A-Z0-9_-]{1,32}$/.test(normalized)) throw new HttpError(400, "INVALID_CARE_FILTER");
+  return normalized;
+}
+
 function organizationId(req: Request, url: URL) {
   const value = (url.searchParams.get("organization_id") || req.headers.get("x-organization-id") || "").trim();
   if (!UUID_RE.test(value)) throw new HttpError(400, "ORGANIZATION_ID_REQUIRED");
@@ -130,7 +137,7 @@ function listEnvelope<T>(kind: string, org: string, result: RestList<T>, limit: 
 
 async function overview(env: ShadowEnv, token: string, rid: string, org: string) {
   const orgFilter = { organization_id: `eq.${org}` };
-  const [readiness, totalPositions, outOfStock, critical, reorder, expiryRisk, insufficient, actions, reconciliations, iot, documents] = await Promise.all([
+  const [readiness, totalPositions, outOfStock, critical, reorder, expiryRisk, insufficient, actions, care, reconciliations, iot, documents] = await Promise.all([
     restList(env, token, rid, "production_readiness_v4", { ...orgFilter, select: "*" }, 1, 0),
     restCount(env, token, rid, "inventory_intelligence_v4", orgFilter),
     restCount(env, token, rid, "inventory_intelligence_v4", { ...orgFilter, stock_status: "eq.OUT_OF_STOCK" }),
@@ -139,6 +146,7 @@ async function overview(env: ShadowEnv, token: string, rid: string, org: string)
     restCount(env, token, rid, "inventory_intelligence_v4", { ...orgFilter, stock_status: "eq.EXPIRY_RISK" }),
     restCount(env, token, rid, "inventory_intelligence_v4", { ...orgFilter, stock_status: "eq.INSUFFICIENT_DATA" }),
     restCount(env, token, rid, "action_center_v4", orgFilter),
+    restCount(env, token, rid, "action_center_v4", { ...orgFilter, source_type: "in.(CARE_SIGNAL,CARE_CASE,CARE_FOLLOWUP)" }),
     restCount(env, token, rid, "inventory_reconciliation_summary_v4", orgFilter),
     restCount(env, token, rid, "iot_health_v4", orgFilter),
     restCount(env, token, rid, "document_registry_summary_v4", orgFilter)
@@ -159,6 +167,7 @@ async function overview(env: ShadowEnv, token: string, rid: string, org: string)
       actionable: outOfStock + critical + reorder + expiryRisk
     },
     action_center: { items: actions },
+    care: { items: care },
     reconciliation: { runs: reconciliations },
     iot: { devices: iot },
     documents: { documents }
@@ -189,6 +198,23 @@ async function actions(env: ShadowEnv, token: string, rid: string, org: string, 
   };
   const result = await restList(env, token, rid, "action_center_v4", params, limit, offset);
   return listEnvelope("actions", org, result, limit, offset);
+}
+
+async function careQueue(env: ShadowEnv, token: string, rid: string, org: string, url: URL) {
+  const limit = boundedInt(url.searchParams.get("limit"), 50, 1, 200);
+  const offset = boundedInt(url.searchParams.get("offset"), 0, 0, 10000);
+  const status = safeCareToken(url.searchParams.get("status"));
+  const priority = safeCareToken(url.searchParams.get("priority"));
+  const params: Record<string, string> = {
+    organization_id: `eq.${org}`,
+    source_type: "in.(CARE_SIGNAL,CARE_CASE,CARE_FOLLOWUP)",
+    select: "organization_id,item_kind,item_id,alert_id,source_type,source_id,warehouse_id,drug_id,drug_lot_id,title,priority,status,owner_user_id,owner_membership_id,due_at,created_at,triggered_at,reason_code,recommended_action,engine_version,risk_score",
+    order: "due_at.asc.nullslast,risk_score.desc.nullslast,created_at.desc"
+  };
+  if (status) params.status = `eq.${status}`;
+  if (priority) params.priority = `eq.${priority}`;
+  const result = await restList(env, token, rid, "action_center_v4", params, limit, offset);
+  return listEnvelope("care", org, result, limit, offset);
 }
 
 async function reconciliations(env: ShadowEnv, token: string, rid: string, org: string, url: URL) {
@@ -326,6 +352,7 @@ export async function handleShadowRead(req: Request, env: ShadowEnv, rid: string
   if (url.pathname === "/v4/shadow/overview") return overview(env, token, rid, org);
   if (url.pathname === "/v4/shadow/inventory") return inventory(req, env, token, rid, org, url);
   if (url.pathname === "/v4/shadow/actions") return actions(env, token, rid, org, url);
+  if (url.pathname === "/v4/shadow/care") return careQueue(env, token, rid, org, url);
   if (url.pathname === "/v4/shadow/reconciliations") return reconciliations(env, token, rid, org, url);
   if (url.pathname === "/v4/shadow/iot") return iotHealth(env, token, rid, org, url);
   if (url.pathname === "/v4/shadow/documents") return documents(env, token, rid, org, url);
