@@ -7,6 +7,8 @@
     limit: 50,
     offset: 0,
     inventoryStatus: "",
+    careStatus: "",
+    carePriority: "",
     gateway: config.gatewayUrl || location.origin,
     organizationId: config.organizationId || window.MEICARE_SESSION.selectedOrganizationId()
   };
@@ -15,6 +17,7 @@
     overview: ["Tổng quan vận hành", "Quan sát dữ liệu V4 mà không thay đổi luồng production."],
     inventory: ["Kho thông minh V4", "Drug code × warehouse là trục vận hành; dữ liệu chỉ đọc từ Intelligence V4."],
     actions: ["Action Center", "Ưu tiên rủi ro và hành động đề xuất; Shadow UI không thực thi hành động."],
+    care: ["Hàng đợi chăm sóc", "Theo dõi tác vụ chăm sóc đã được hệ thống phát sinh; quyết định và thực thi vẫn thuộc về con người."],
     reconciliations: ["Đối soát HIS", "Theo dõi ingestion, sai lệch và case cần human review trước commit."],
     iot: ["IoT / GSP", "Trạng thái thiết bị, nhiệt độ, độ ẩm, calibration và excursion."],
     documents: ["Tài liệu & Evidence", "Registry, phiên bản hiện hành, checksum và bằng chứng đã xác minh."],
@@ -65,9 +68,9 @@
 
   function pill(value) {
     const label = String(value || "UNKNOWN");
-    const danger = ["OUT_OF_STOCK", "CRITICAL", "BLOCKED", "FAILED", "OFFLINE", "OVERDUE", "REJECTED"].includes(label);
-    const warning = ["REORDER", "EXPIRY_RISK", "DEFAULT_LOW_STOCK", "WARNING", "INSUFFICIENT_DATA", "PENDING", "IN_REVIEW"].includes(label);
-    const success = ["HEALTHY", "ONLINE", "AVAILABLE", "COMPLETED", "APPROVED", "EFFECTIVE", "PASS", "READY_FOR_REVIEW"].includes(label);
+    const danger = ["OUT_OF_STOCK", "CRITICAL", "BLOCKED", "FAILED", "OFFLINE", "OVERDUE", "REJECTED", "P0"].includes(label);
+    const warning = ["REORDER", "EXPIRY_RISK", "DEFAULT_LOW_STOCK", "WARNING", "INSUFFICIENT_DATA", "PENDING", "IN_REVIEW", "P1", "P2", "OPEN", "IN_PROGRESS"].includes(label);
+    const success = ["HEALTHY", "ONLINE", "AVAILABLE", "COMPLETED", "APPROVED", "EFFECTIVE", "PASS", "READY_FOR_REVIEW", "CLOSED"].includes(label);
     const cls = danger ? "danger" : warning ? "warning" : success ? "success" : "info";
     return `<span class="status-pill ${cls}">${escapeHtml(label)}</span>`;
   }
@@ -204,6 +207,7 @@
         ${metric("Cần hành động", inv.actionable, "Out + critical + reorder + expiry", "warning")}
         ${metric("Thiếu dữ liệu", inv.insufficient_data, "Không suy diễn khi evidence chưa đủ")}
         ${metric("Action Center", data.action_center?.items || 0)}
+        ${metric("Chăm sóc", data.care?.items || 0, "Care signal / case / follow-up")}
         ${metric("Đối soát HIS", data.reconciliation?.runs || 0)}
         ${metric("Thiết bị IoT", data.iot?.devices || 0)}
         ${metric("Tài liệu Registry", data.documents?.documents || 0)}
@@ -264,6 +268,67 @@
     const data = await api("/v4/shadow/actions", { limit: state.limit, offset: state.offset });
     const content = !data.rows?.length ? empty() : `<div class="table-wrap"><table><thead><tr><th>Ưu tiên</th><th>Tiêu đề</th><th>Trạng thái</th><th>Nguồn</th><th class="numeric">Risk</th><th>Khuyến nghị</th><th>Hạn</th></tr></thead><tbody>${data.rows.map((row) => `<tr><td>${pill(row.priority)}</td><td><strong>${escapeHtml(row.title || "—")}</strong><div class="subtle">${escapeHtml(row.description || "")}</div></td><td>${pill(row.status)}</td><td>${escapeHtml(row.source_type || "—")}</td><td class="numeric">${formatNumber(row.risk_score,1)}</td><td>${escapeHtml(row.recommended_action || "—")}</td><td>${formatDate(row.due_at,true)}</td></tr>`).join("")}</tbody></table></div>`;
     root.innerHTML = panel("Action Center V4", "Không có nút approve/execute trong Shadow UI.", `${content}${pagination(data.total, data.limit, data.offset)}`);
+    bindPagination();
+  }
+
+  function careEmpty() {
+    return `<div class="empty-state"><strong>Chưa có tác vụ chăm sóc phù hợp</strong><span>MEICARE không tự suy diễn tác vụ từ alert kho. Hàng đợi chỉ hiển thị nguồn CARE_SIGNAL / CARE_CASE / CARE_FOLLOWUP đã được phát sinh rõ ràng.</span></div>`;
+  }
+
+  async function renderCare() {
+    const data = await api("/v4/shadow/care", {
+      limit: state.limit,
+      offset: state.offset,
+      status: state.careStatus,
+      priority: state.carePriority
+    });
+    const rows = data.rows || [];
+    const content = !rows.length ? careEmpty() : `<div class="table-wrap"><table><thead><tr><th>Ưu tiên</th><th>Tác vụ</th><th>Lý do</th><th>Phụ trách</th><th>Trạng thái</th><th>Hạn xử lý</th><th>Hành động đề xuất</th><th>Nguồn</th></tr></thead><tbody>${rows.map((row) => {
+      const overdue = row.due_at
+        && new Date(row.due_at).getTime() < Date.now()
+        && !["COMPLETED","CLOSED","REJECTED"].includes(String(row.status || "").toUpperCase());
+      return `<tr>
+        <td>${pill(row.priority || "—")}</td>
+        <td><strong>${escapeHtml(row.title || row.source_id || "Tác vụ chăm sóc")}</strong><div class="subtle">${escapeHtml(row.source_id || "—")}</div></td>
+        <td>${escapeHtml(row.reason_code || "—")}</td>
+        <td>${escapeHtml(row.owner_membership_id ? "Đã phân công" : "Chưa phân công")}</td>
+        <td>${overdue ? pill("OVERDUE") : pill(row.status || "—")}</td>
+        <td>${formatDate(row.due_at, true)}</td>
+        <td>${escapeHtml(row.recommended_action || "—")}</td>
+        <td>${escapeHtml(row.source_type || "—")}</td>
+      </tr>`;
+    }).join("")}</tbody></table></div>`;
+
+    root.innerHTML = panel(
+      "Hàng đợi chăm sóc",
+      "Chỉ đọc · dữ liệu đã tenant-scope qua RLS · không hiển thị raw metadata hoặc mô tả tự do.",
+      `<div class="toolbar">
+        <label>Ưu tiên
+          <select id="carePriority">
+            <option value="">Tất cả</option>
+            ${["P0","P1","P2","P3"].map((value) => `<option value="${value}" ${state.carePriority === value ? "selected" : ""}>${value}</option>`).join("")}
+          </select>
+        </label>
+        <label>Trạng thái
+          <select id="careStatus">
+            <option value="">Tất cả</option>
+            ${["OPEN","IN_PROGRESS","PENDING","COMPLETED","CLOSED","REJECTED"].map((value) => `<option value="${value}" ${state.careStatus === value ? "selected" : ""}>${value}</option>`).join("")}
+          </select>
+        </label>
+      </div>
+      ${content}${pagination(data.total, data.limit, data.offset)}`
+    );
+
+    document.getElementById("carePriority")?.addEventListener("change", (event) => {
+      state.carePriority = event.target.value;
+      state.offset = 0;
+      load();
+    });
+    document.getElementById("careStatus")?.addEventListener("change", (event) => {
+      state.careStatus = event.target.value;
+      state.offset = 0;
+      load();
+    });
     bindPagination();
   }
 
@@ -356,6 +421,7 @@
       if (state.view === "overview") await renderOverview();
       else if (state.view === "inventory") await renderInventory();
       else if (state.view === "actions") await renderActions();
+      else if (state.view === "care") await renderCare();
       else if (state.view === "reconciliations") await renderReconciliations();
       else if (state.view === "iot") await renderIot();
       else if (state.view === "documents") await renderDocuments();
