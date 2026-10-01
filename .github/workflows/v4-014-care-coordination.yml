@@ -119,7 +119,7 @@ jobs:
             done
           }
           wait_for "platform" GET "$PREVIEW_URL/" 200 'MEICARE PLATFORM · V4' /tmp/platform.html
-          wait_for "care navigation" GET "$PREVIEW_URL/index.html" 200 'Hàng đợi chăm sóc' /tmp/care.html
+          wait_for "care navigation" GET "$PREVIEW_URL/" 200 'Hàng đợi chăm sóc' /tmp/care.html
           wait_for "care unauthenticated" GET "$PREVIEW_URL/v4/shadow/care?organization_id=$CANARY_ORG_ID" 401 'UNAUTHORIZED' /tmp/care.json
           wait_for "care mutation blocked" POST "$PREVIEW_URL/v4/shadow/care?organization_id=$CANARY_ORG_ID" 405 'METHOD_NOT_ALLOWED' /tmp/care-post.json
           wait_for "route fallback" GET "$PREVIEW_URL/not-a-real-route-v4-014a" 404 'Không tìm thấy trang' /tmp/not-found.html
