@@ -77,9 +77,9 @@ jobs:
           set -euo pipefail
           psql "$DATABASE_URL"             -v ON_ERROR_STOP=1             -f test/fixtures/v4-014c-care-acceptance.sql             | tee /tmp/v4-014c-acceptance.log
 
-          grep -q '"pass" : 22' /tmp/v4-014c-acceptance.log
-          grep -q '"fail" : 0' /tmp/v4-014c-acceptance.log
-          grep -q '"total" : 22' /tmp/v4-014c-acceptance.log
+          grep -Eq '"pass"[[:space:]]*:[[:space:]]*22' /tmp/v4-014c-acceptance.log
+          grep -Eq '"fail"[[:space:]]*:[[:space:]]*0' /tmp/v4-014c-acceptance.log
+          grep -Eq '"total"[[:space:]]*:[[:space:]]*22' /tmp/v4-014c-acceptance.log
 
       - name: Post-acceptance schema audit
         shell: bash
