@@ -1,0 +1,92 @@
+name: V4_014B Care State Machine Source Gate
+
+on:
+  push:
+    branches:
+      - v4-014b-care-state-machine
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: v4-014b-care-state-machine
+  cancel-in-progress: true
+
+jobs:
+  validate-source-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install pinned dependencies
+        run: npm ci
+
+      - name: Validate application and tests
+        run: |
+          npm run check
+          npm test
+          npm audit --audit-level=high
+
+      - name: V4_014B migration safety guards
+        shell: bash
+        run: |
+          set -euo pipefail
+          MIGRATION="supabase/migrations/20261002000500_v4_014b_care_state_machine.sql"
+
+          test -f "$MIGRATION"
+          grep -q "^begin;" "$MIGRATION"
+          grep -q "^commit;" "$MIGRATION"
+          grep -q "V4_014B_WORKFLOW_MANAGE_PERMISSION_MISSING" "$MIGRATION"
+          grep -q "private.has_scoped_permission_v4" "$MIGRATION"
+          grep -q "with (security_invoker = true)" "$MIGRATION"
+          grep -q "REJECT_MUST_NOT_CREATE_OWNER_OR_SLA" "$MIGRATION"
+          grep -q "ACCEPT_REQUIRES_OWNER_AND_SLA" "$MIGRATION"
+          grep -q "CARE_VERIFICATION_REQUIRES_ACTION" "$MIGRATION"
+          grep -q "CARE_APPEND_ONLY_RECORD_IMMUTABLE" "$MIGRATION"
+
+          if grep -Eiq "insert[[:space:]]+into[[:space:]]+public\.permissions|insert[[:space:]]+into[[:space:]]+public\.role_permissions" "$MIGRATION"; then
+            echo "V4_014B must not self-create or self-assign commercial permission codes"
+            exit 1
+          fi
+
+          if grep -Eiq "create[[:space:]]+(or[[:space:]]+replace[[:space:]]+)?function[[:space:]]+public\.[^(]+\([^;]*security[[:space:]]+definer" "$MIGRATION"; then
+            echo "Public SECURITY DEFINER care RPC detected"
+            exit 1
+          fi
+
+          if grep -Eiq "frontend_v4_ready[[:space:]]*=[[:space:]]*true|inventory_write_mode[[:space:]]*=|alert_publish_mode[[:space:]]*=|cutover_stage[[:space:]]*=" "$MIGRATION"; then
+            echo "V4_014B must not mutate commercial cutover/readiness state"
+            exit 1
+          fi
+
+          if grep -Eiq "SUPABASE_SERVICE_ROLE_KEY|sb_secret_" "$MIGRATION" docs/V4_014B_CARE_STATE_MACHINE.md; then
+            echo "Secret marker found in V4_014B source package"
+            exit 1
+          fi
+
+      - name: Confirm source-only boundary
+        shell: bash
+        run: |
+          set -euo pipefail
+          test ! -e ".github/workflows/v4-014b-deploy.yml"
+          grep -q "NOT APPLIED TO PRODUCTION" docs/V4_014B_CARE_STATE_MACHINE.md
+          grep -q "SOURCE READY /" docs/V4_014B_CARE_STATE_MACHINE.md
+
+      - name: Summary
+        if: always()
+        run: |
+          echo "### V4_014B Commercial Care State Machine" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Scope: source-only migration + static contract" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Production Supabase mutation: none" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Cloudflare/runtime mutation: none" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Canonical care tables: private schema" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Public read views/RPCs: security-invoker boundary" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Human write prerequisite: existing workflow.manage" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Next gate: controlled database execution in V4_014C" >> "$GITHUB_STEP_SUMMARY"
