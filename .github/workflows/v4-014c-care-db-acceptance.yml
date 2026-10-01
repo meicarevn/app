@@ -1,0 +1,139 @@
+name: V4_014C Care DB Acceptance
+
+on:
+  push:
+    branches:
+      - v4-014c-care-db-acceptance
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: v4-014c-care-db-acceptance
+  cancel-in-progress: true
+
+jobs:
+  postgres-acceptance:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: meicare_v4_014c
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d meicare_v4_014c"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/meicare_v4_014c
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install pinned dependencies
+        run: npm ci
+
+      - name: Source regression
+        run: |
+          npm run check
+          npm test
+          npm audit --audit-level=high
+
+      - name: Ensure PostgreSQL client
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! command -v psql >/dev/null 2>&1; then
+            sudo apt-get update -qq
+            sudo apt-get install -y postgresql-client
+          fi
+          psql --version
+
+      - name: Bootstrap synthetic commercial contract
+        run: |
+          psql "$DATABASE_URL"             -v ON_ERROR_STOP=1             -f test/fixtures/v4-014c-commercial-schema.sql
+
+      - name: Execute V4_014B migration on PostgreSQL 17
+        run: |
+          psql "$DATABASE_URL"             -v ON_ERROR_STOP=1             -f supabase/migrations/20261002000500_v4_014b_care_state_machine.sql
+
+      - name: Execute V4_014C positive and negative acceptance
+        shell: bash
+        run: |
+          set -euo pipefail
+          psql "$DATABASE_URL"             -v ON_ERROR_STOP=1             -f test/fixtures/v4-014c-care-acceptance.sql             | tee /tmp/v4-014c-acceptance.log
+
+          grep -q '"pass" : 22' /tmp/v4-014c-acceptance.log
+          grep -q '"fail" : 0' /tmp/v4-014c-acceptance.log
+          grep -q '"total" : 22' /tmp/v4-014c-acceptance.log
+
+      - name: Post-acceptance schema audit
+        shell: bash
+        run: |
+          set -euo pipefail
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -Atc "
+            select jsonb_build_object(
+              'private_tables', (
+                select count(*)
+                from information_schema.tables
+                where table_schema='private'
+                  and table_name like 'care_%_v4'
+              ),
+              'public_care_views', (
+                select count(*)
+                from information_schema.views
+                where table_schema='public'
+                  and table_name in ('care_queue_v4','care_case_timeline_v4')
+              ),
+              'public_security_definers', (
+                select count(*)
+                from pg_proc p
+                join pg_namespace n on n.oid=p.pronamespace
+                where n.nspname='public'
+                  and p.proname like '%care%v4%'
+                  and p.prosecdef
+              ),
+              'audit_rows', (
+                select count(*) from public.audit_logs
+                where source_type='CARE_COORDINATION_V4'
+              )
+            );
+          " | tee /tmp/v4-014c-schema-audit.json
+
+          grep -q '"private_tables": 5' /tmp/v4-014c-schema-audit.json
+          grep -q '"public_care_views": 2' /tmp/v4-014c-schema-audit.json
+          grep -q '"public_security_definers": 0' /tmp/v4-014c-schema-audit.json
+
+      - name: Production-isolation guard
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -z "${SUPABASE_URL:-}"
+          test -z "${SUPABASE_SERVICE_ROLE_KEY:-}"
+          test -z "${CLOUDFLARE_API_TOKEN:-}"
+          echo "Ephemeral PostgreSQL acceptance only; no external runtime credentials present."
+
+      - name: Summary
+        if: always()
+        run: |
+          echo "### V4_014C Ephemeral PostgreSQL Acceptance" >> "$GITHUB_STEP_SUMMARY"
+          echo "- PostgreSQL: 17-alpine service container" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Commercial Supabase: untouched" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Cloudflare: untouched" >> "$GITHUB_STEP_SUMMARY"
+          echo "- V4_014B migration: executed only on ephemeral DB" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Acceptance contract: 22 positive/negative checks" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Next gate: resolve any schema/runtime differences before controlled Supabase activation" >> "$GITHUB_STEP_SUMMARY"
